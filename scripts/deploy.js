@@ -483,6 +483,7 @@ async function main() {
       let balanceStmcBusd = await pairSmtcBusdIns.balanceOf(owner.address);
       console.log("SMT-BUSD balance: ", ethers.utils.formatEther(balanceStmcBusd));    
     }
+    const test = 0;
 }
 
 // We recommend this pattern to be able to use async/await everywhere
