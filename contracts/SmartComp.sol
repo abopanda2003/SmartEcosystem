@@ -12,6 +12,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import "./interfaces/ISmartComp.sol";
+import "hardhat/console.sol";
 
 contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
 
@@ -55,7 +56,6 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     initializer
   {
     busdToken = IERC20(0x78867BbEeF44f2326bF8DDd1941a4439382EF2A7);  // Testnet
-
     // Pancake V2 router
     IUniswapV2Router02 _uniswapRouter = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); 
     uniswapV2Router = _uniswapRouter;

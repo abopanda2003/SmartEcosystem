@@ -51,7 +51,7 @@ contract SmartToken is Context, IBEP20, Ownable {
     address public _intermediaryAddress;
 
     // Buy Tax information
-    uint256 public _buyTaxFee = 15; // the % amount of buying amount when buying SMT token
+    uint256 public _buyTaxFeeForUser = 15; // the % amount of buying amount when buying SMT token
 
     uint256 public _buyReferralFee = 50;
     uint256 public _buyGoldenPoolFee = 30;
@@ -270,6 +270,14 @@ contract SmartToken is Context, IBEP20, Ownable {
         return owner();
     }
 
+    function getETHPair() external view returns (address) {
+        return _uniswapV2ETHPair;
+    }
+
+    function getBUSDPair() external view returns (address) {
+        return _uniswapV2BUSDPair;
+    }
+
     function name() external override view returns (string memory) {
         return _name;
     }
@@ -304,7 +312,7 @@ contract SmartToken is Context, IBEP20, Ownable {
         return true;
     }
 
-    function transferFrom (address sender, address recipient, uint256 amount) external override virtual returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) external override virtual returns (bool) {
         _transferFrom(sender, recipient, amount);
         _approve(
             sender,
@@ -336,50 +344,59 @@ contract SmartToken is Context, IBEP20, Ownable {
             if(sender == _intermediaryAddress && toPair) {
                 // Intermediary => Pair: No Fee
                 _transfer(sender, recipient, amount);
+                // uint256 taxAmount = amount.mul(10).div(100);
+                // uint256 recvAmount = amount.sub(taxAmount);
+                
+                // distributeSellTax(sender, taxAmount);
+                // _transfer(sender, recipient, recvAmount);
             } else if(fromPair && recipient == _intermediaryAddress) {
                 // Pair => Intermediary: No Fee
                 _transfer(sender, recipient, amount);
+                // uint256 taxAmount = amount.mul(10).div(100);
+                // uint256 recvAmount = amount.sub(taxAmount);
+                
+                // distributeBuyTax(sender, recipient, taxAmount);
+                // _transfer(sender, recipient, recvAmount);
             } else if(sender == _intermediaryAddress || recipient == _intermediaryAddress) {
                 if (recipient == _intermediaryAddress) {
                     require(enabledIntermediary(sender), "SMT: no smart army account");
                     // sell transfer via intermediary: sell tax reduce 30%
-                    uint256 taxAmount1 = _getCurrentSellTax().mul(700).div(1000).div(100);
-                    uint256 recvAmount1 = amount.sub(taxAmount1);
+                    uint256 taxAmount = _getCurrentSellTax().mul(700).div(1000).div(100);
+                    uint256 recvAmount = amount.sub(taxAmount);
                     
-                    distributeSellTax(sender, taxAmount1);
-                    _transfer(sender, recipient, recvAmount1);
-
+                    distributeSellTax(sender, taxAmount);
+                    _transfer(sender, recipient, recvAmount);
                 } else {
                     require(enabledIntermediary(recipient), "SMT: no smart army account");
                     // buy transfer via intermediary: buy tax reduce 30%
-                    uint256 taxAmount2 = amount.mul(_buyTaxFee.mul(700).div(1000)).div(100);
-                    uint256 recvAmount2 = amount.sub(taxAmount2);
+                    uint256 taxAmount = amount.mul(_buyTaxFeeForUser.mul(700).div(1000)).div(100);
+                    uint256 recvAmount = amount.sub(taxAmount);
                     
-                    distributeBuyTax(sender, recipient, taxAmount2);                    
-                    _transfer(sender, recipient, recvAmount2);
+                    distributeBuyTax(sender, recipient, taxAmount);
+                    _transfer(sender, recipient, recvAmount);
                 }
             } else if (fromPair) {
                 // buy transfer
-                uint256 taxAmount3 = amount.mul(_buyTaxFee).div(100);
-                uint256 recvAmount3 = amount.sub(taxAmount3);
+                uint256 taxAmount = amount.mul(_buyTaxFeeForUser).div(100);
+                uint256 recvAmount = amount.sub(taxAmount);
                 
-                distributeBuyTax(sender, recipient, taxAmount3);
-                _transfer(sender, recipient, recvAmount3);
+                distributeBuyTax(sender, recipient, taxAmount);
+                _transfer(sender, recipient, recvAmount);
             } else if (toPair) {
                 // sell transfer 
-                uint256 taxAmount4 = amount.mul(_getCurrentSellTax()).div(100);
-                uint256 recvAmount4 = amount.sub(taxAmount4);
+                uint256 taxAmount = amount.mul(_getCurrentSellTax()).div(100);
+                uint256 recvAmount = amount.sub(taxAmount);
                 
-                distributeSellTax(sender, taxAmount4);
+                distributeSellTax(sender, taxAmount);
                 // !!! should be called after distribute!
-                _transfer(sender, recipient, recvAmount4);
+                _transfer(sender, recipient, recvAmount);
             } else {
                 // normal transfer
-                uint256 taxAmount5 = amount.mul(_transferTaxFee).div(100);
-                uint256 recvAmount5 = amount.sub(taxAmount5);
+                uint256 taxAmount = amount.mul(_transferTaxFee).div(100);
+                uint256 recvAmount = amount.sub(taxAmount);
                 
-                distributeTransferTax(sender, taxAmount5);
-                _transfer(sender, recipient, recvAmount5);
+                distributeTransferTax(sender, taxAmount);
+                _transfer(sender, recipient, recvAmount);
             }
         }
     }
@@ -389,6 +406,23 @@ contract SmartToken is Context, IBEP20, Ownable {
         _balances[_to] += _amount;
         _balances[_from] -= _amount;
         emit Transfer(_from, _to, _amount);
+    }
+
+    function _transferToGoldenTreePool(address _sender, uint256 amount) internal {
+        IERC20 busd = comptroller.getBUSD();
+        _transfer(_sender, address(this), amount);
+        _swapTokenForBUSD(amount);
+        uint256 _amount = busd.balanceOf(address(this));
+        if(_amount > 0)
+            busd.transfer(_goldenTreePoolAddress, _amount);
+    }
+
+    function _transferToAchievement(address _sender, uint256 amount) internal {
+        _transfer(_sender, address(this), amount);
+        _swapTokenForBNB(amount);
+        uint256 _amount = payable(address(this)).balance;
+        if(_amount > 0)
+            payable(_achievementSystemAddress).transfer(_amount);
     }
 
      function distributeSellTax (
@@ -405,12 +439,10 @@ contract SmartToken is Context, IBEP20, Ownable {
         _transfer(sender, _devAddress, devAmount);
         _transfer(sender, _farmingRewardAddress, farmingAmount);
         _transfer(sender, BURN_ADDRESS, burnAmount);
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-        
-        _swapTokenToBUSD(_goldenTreePoolAddress, goldenTreeAmount);
-        _swapTokenToBNB(_achievementSystemAddress, achievementAmount);
-
+        _transferToGoldenTreePool(sender, goldenTreeAmount);
+        _transferToAchievement(sender, achievementAmount);
+        // _transfer(sender, _achievementSystemAddress, achievementAmount);
+        // _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
         distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
 
         if(farmingAmount > 0) {
@@ -435,11 +467,8 @@ contract SmartToken is Context, IBEP20, Ownable {
 
         _transfer(sender, _devAddress, devAmount);
         _transfer(sender, _referralAddress, referralAmount);
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-
-        _swapTokenToBUSD(_goldenTreePoolAddress, goldenTreeAmount);
-        _swapTokenToBNB(_achievementSystemAddress, achievementAmount);
+        _transferToGoldenTreePool(sender, goldenTreeAmount);
+        _transferToAchievement(sender, achievementAmount);
 
         distributeBuyTaxToLadder(recipient);
         distributeTaxToGoldenTreePool(recipient, goldenTreeAmount);
@@ -453,15 +482,17 @@ contract SmartToken is Context, IBEP20, Ownable {
         address sender,
         uint256 amount
     ) internal {
-        uint256 devAmount = amount.mul(_transferDevFee).div(100);
-        uint256 farmingAmount = amount.mul(_transferFarmingFee).div(100);
-        uint256 goldenTreeAmount = amount.mul(_transferGoldenFee).div(100);
-        uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
+        // uint256 devAmount = amount.mul(_transferDevFee).div(100);
+        // uint256 farmingAmount = amount.mul(_transferFarmingFee).div(100);
+        // uint256 goldenTreeAmount = amount.mul(_transferGoldenFee).div(100);
+        // uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
 
-        _transfer(sender, _devAddress, devAmount);
-        _transfer(sender, _farmingRewardAddress, farmingAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
+        // _transfer(sender, _devAddress, devAmount);
+        // _transfer(sender, _farmingRewardAddress, farmingAmount);
+        // _transferToGoldenTreePool(sender, goldenTreeAmount);
+        // _transferToAchievement(sender, achievementAmount);
+        // _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
+        // _transfer(sender, _achievementSystemAddress, achievementAmount);
 
         // distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
     } 
@@ -487,7 +518,7 @@ contract SmartToken is Context, IBEP20, Ownable {
         IGoldenTreePool(_goldenTreePoolAddress).notifyReward(amount, account);
     }
 
-    function _mint(address account, uint256 amount) internal {
+    function _mint(address account, uint256 amount) private {
         require(account != address(0), 'SMT: mint to the zero address');
         require(_totalSupply + amount <= MAX_TOTAL_SUPPLY, "exceeds maximum total supply");
         _totalSupply = _totalSupply.add(amount);
@@ -575,11 +606,11 @@ contract SmartToken is Context, IBEP20, Ownable {
     }    
 
     /**
-     * @dev Sets value for _buyTaxFee with {buyTaxFee} in emergency status.
+     * @dev Sets value for _buyTaxFeeForUser with {buyTaxFee} in emergency status.
      */
-    function setBuyFee (uint256 buyTaxFee) external onlyOperator {
+    function setBuyFee(uint256 buyTaxFee) external onlyOperator {
         require(buyTaxFee < 100, 'SMT: buyTaxFee exceeds maximum value');
-        _buyTaxFee = buyTaxFee;
+        _buyTaxFeeForUser = buyTaxFee;
 
         emit UpdatedBuyFee(buyTaxFee);
     }    
@@ -599,7 +630,7 @@ contract SmartToken is Context, IBEP20, Ownable {
         uint256 sellFee, 
         uint256 transferFee
     ){
-        return (_buyTaxFee, _sellTaxFee, _transferTaxFee);
+        return (_buyTaxFeeForUser, _sellTaxFee, _transferTaxFee);
     }
 
     function getBuyTaxFees() external view returns(
@@ -893,93 +924,42 @@ contract SmartToken is Context, IBEP20, Ownable {
         return exist;
     }
 
-    function _swapTokenToBNB(address to, uint256 tokenAmount) private {
-        IERC20 smtToken = comptroller.getSMT();
-        // IERC20 busdToken = comptroller.getBUSD();
-        IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
-
-        // generate the uniswap pair path of token -> busd
-        address[] memory path = new address[](2);
-        path[0] = address(smtToken);
-        path[1] = address(uniswapV2Router.WETH());
-
-        smtToken.approve(address(uniswapV2Router), tokenAmount);
-        
-		uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-			tokenAmount,
-			0,
-			path,
-            to,
-			block.timestamp
-		);
-    }
-
-    function _swapTokenToBUSD(address to, uint256 tokenAmount) private {
-        IERC20 smtToken = comptroller.getSMT();
+    function _swapTokenForBUSD(uint256 tokenAmount) private {
         IERC20 busdToken = comptroller.getBUSD();
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
 
         // generate the uniswap pair path of token -> busd
         address[] memory path = new address[](2);
-        path[0] = address(smtToken);
+        path[0] = address(this);
         path[1] = address(busdToken);
 
-        smtToken.approve(address(uniswapV2Router), tokenAmount);
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
         
         // make the swap
         uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             tokenAmount,
             0,
             path,
-            to,
-            block.timestamp
-        );
-    }
-
-    function _addLiquidity(uint256 tokenAmount, uint256 busdAmount) 
-        private 
-        returns (uint amountA, uint amountB, uint liquidity)
-    {
-        IERC20 smtToken = comptroller.getSMT();
-        IERC20 busdToken = comptroller.getBUSD();
-        IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
-
-        // approve token transfer to cover all possible scenarios
-        smtToken.approve(address(uniswapV2Router), tokenAmount);
-        busdToken.approve(address(uniswapV2Router), busdAmount);
-        
-        // add the liquidity
-        (amountA, amountB, liquidity) = uniswapV2Router.addLiquidity(
-            address(smtToken),
-            address(busdToken),
-            tokenAmount,
-            busdAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
             address(this),
             block.timestamp
         );
     }
 
-    function _removeLiquidity(uint256 lpAmount) 
-        private 
-        returns (uint amountA, uint amountB)
-    {
-        IERC20 smtToken = comptroller.getSMT();
-        IERC20 busdToken = comptroller.getBUSD();
+    function _swapTokenForBNB(uint256 tokenAmount) private {
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
 
-        // approve token transfer to cover all possible scenarios
-        address pair = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(smtToken), address(busdToken));
-        IERC20(pair).approve(address(uniswapV2Router), lpAmount);    
+        // generate the uniswap pair path of token -> busd
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = address(uniswapV2Router.WETH());
+
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
         
-        // add the liquidity
-        (amountA, amountB) = uniswapV2Router.removeLiquidity(
-            address(smtToken),
-            address(busdToken),
-            lpAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
+        // make the swap
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0,
+            path,
             address(this),
             block.timestamp
         );

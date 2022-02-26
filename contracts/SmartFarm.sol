@@ -95,8 +95,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       farmingRewardWallet = _rewardWallet;
 
       feeAddress = msg.sender;
-    }
-  
+    }  
 
   /**
   * @notice Sets a new comptroller
@@ -105,11 +104,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function setComptroller(ISmartComp newComptroller) external onlyOwner {
     // Ensure invoke comptroller.isComptroller() returns true
     require(newComptroller.isComptroller(), "marker method returned false");
-
     // Set comptroller to newComptroller
     comptroller = newComptroller;
   }
-
 
   /**
    * Update Fee information
@@ -125,9 +122,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     require(_farmingTax_referral < 5000, "SmartFarm#updateFeeInfo: Too big farming tax referral");
     require(_farmingTax_golden < 5000, "SmartFarm#updateFeeInfo: Too big farming tax golden");
     require(_farmingTax_dev < 5000, "SmartFarm#updateFeeInfo: Too big farming tax dev");
-    require(_farmingTax_passive < 5000, "SmartFarm#updateFeeInfo: Too big farming tax passwive");
-    
+    require(_farmingTax_passive < 5000, "SmartFarm#updateFeeInfo: Too big farming tax passwive");    
     require(_unstakingFee < 5000, "SmartFarm#updateFeeInfo: Too big unstaking fee");
+    require(_feeAddress != address(0x0), "SmartFarm#updateFeeInfo: should be not zero address");
     
     farmingTax_referral = _farmingTax_referral;
     farmingTax_golden = _farmingTax_golden;
@@ -275,6 +272,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     // prevent overflow
     require(rewardUnitsToDistribute < type(uint256).max / 1e18);
     // new reward units per token = (rewardUnitsToDistribute * 1e18) / totalTokens
+    
     uint256 unitsToDistributePerToken = rewardUnitsToDistribute * 1e18 / stakedTokens;
     // return summed rate
     return rewardPerTokenStored + unitsToDistributePerToken;
@@ -287,7 +285,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function earned(address account) public view returns (uint256) {
     uint256 blockTime = block.timestamp;
     UserInfo memory uInfo = userInfo[account];
-
     // Check license activation duration 
     (uint256 start, uint256 end) = comptroller.getSmartArmy().licenseActiveDuration(account, uInfo.lastUpdated, blockTime);
     if(start == 0 || end == 0) {
