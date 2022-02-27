@@ -126,11 +126,13 @@ async function main() {
 
       deploySMTBridge: false,
 
-      deploySMTToken: false,
+      deploySMTToken: true,
 
-      testSMTTokenTransfer: false,
+      testAddLiquidity: true,
+      
+      testSwap: false,
 
-      testAddLiquidity: false
+      testSMTTokenTransfer: true,
     }
 
     ///////////////////////// BUSD Token ///////////////////////////
@@ -190,7 +192,8 @@ async function main() {
         args: [wbnb, uniswapV2Factory],
         skipIfAlreadyDeployed: true
       });
-      displayResult('SMTBridge contract', deployedSMTBridge);  
+      displayResult('SMTBridge contract', deployedSMTBridge);
+      smtBridgeAddress = deployedSMTBridge.address;
     } else {
       green(`\SMTBridge Contract deployed at ${smtBridgeAddress}`);
     }
@@ -237,7 +240,7 @@ async function main() {
             [smartCompAddress, deployedSMTC.address],
             {initializer: 'initialize',kind: 'uups'}
         );    
-        await SmartAchievementContract.deployed()        
+        await SmartAchievementContract.deployed();
         smartAchievementAddress = SmartAchievementContract.address;
         displayResult('SmartAchievement Contract Address:', SmartAchievementContract);
 
@@ -344,7 +347,7 @@ async function main() {
     }
 
     ////////////////////// Smart Token ////////////////////////
-    let stmcTokenAddress = "0x95AbeF217ea1e11300eEcf97585e6C6a66D04d15";
+    let stmcTokenAddress = "0xfdB20f3abf402793c8719093D65182D5B4d35168";
     if(options.deploySMTToken) {
       let busd = await smartCompInstance.getBUSD();
       console.log("busd address: ", busd);
@@ -395,36 +398,18 @@ async function main() {
       green(`\nSmart Token deployed at ${stmcTokenAddress}`);      
     }
 
-    if(options.testSMTTokenTransfer) {
-      let smartTokenInstance = await ethers.getContractAt("SmartToken", stmcTokenAddress);
-      // const tranferTx =  await smartTokenInstance.transfer(anotherUser.address, ethers.utils.parseUnits("100000", 18));
-      // await tranferTx.wait();
-      // console.log("owner -> another user transfer tx:", tranferTx.hash);
-  
-      tranferTx =  await smartTokenInstance.connect(anotherUser).transfer(
-        userWallet.address, 
-        ethers.utils.parseUnits("1000", 18)
-      );
-      await tranferTx.wait();
-      console.log("another user -> user transfer tx:", tranferTx.hash);
-  
-      let balance = await smartTokenInstance.balanceOf(anotherUser.address);
-      console.log("another user balance:",
-                  ethers.utils.formatEther(balance.toString()));
-      balance = await smartTokenInstance.balanceOf(userWallet.address);
-      console.log("user balance:",
-                  ethers.utils.formatEther(balance.toString()));
-    }
-
     const contractSmtBnbLP = "0x44E34B530992109c624684e6371fC23e4E1C2C94";
     const contractSmtBusdLP = "0x1C19f2269E633DaA608D00AEfA449fe0E0DC44ee";
-    if(options.testAddLiquidity) {
-      let smartTokenInstance = await ethers.getContractAt("SmartToken", stmcTokenAddress);
-      let smartCompInstance = await ethers.getContractAt("SmartComp", smartCompAddress);
 
-      let routerInstance = new ethers.Contract(
-        smartCompInstance.getUniswapV2Router(), uniswapRouterABI, owner
-      );
+    let smartTokenInstance = await ethers.getContractAt("SmartToken", stmcTokenAddress);
+    const busdAddr = await smartCompInstance.getBUSD();
+    let busdToken = new ethers.Contract(busdAddr, bep20ABI, owner);
+
+    let routerInstance = new ethers.Contract(
+      smartCompInstance.getUniswapV2Router(), uniswapRouterABI, owner
+    );
+
+    if(options.testAddLiquidity) {
 
       let pairSmtcBnbAddr = await smartTokenInstance._uniswapV2ETHPair();
       console.log("SMT-BNB LP token address: ", pairSmtcBnbAddr);
@@ -447,7 +432,7 @@ async function main() {
         0,
         owner.address,
         "111111111111111111111",
-        {value : ethers.utils.parseUnits("0.25", 18)}
+        {value : ethers.utils.parseUnits("0.05", 18)}
       );
       await tx.wait();
       console.log("SMT-BNB add liquidity tx: ", tx.hash);
@@ -457,8 +442,6 @@ async function main() {
 
       ///////////////////  SMT-BUSD Add Liquidity /////////////////////
 
-      const busdAddr = await smartCompInstance.getBUSD();
-      let busdToken = new ethers.Contract(busdAddr, bep20ABI, owner);
 			tx = await busdToken.approve(
 				routerInstance.address,
 				ethers.utils.parseUnits("10000", 18)
@@ -479,11 +462,107 @@ async function main() {
 			await tx.wait();
       console.log("SMT-BUSD add liquidity tx: ", tx.hash);
 
-      // console.log("SMT-BUSD Tx: ", tx);
       let balanceStmcBusd = await pairSmtcBusdIns.balanceOf(owner.address);
       console.log("SMT-BUSD balance: ", ethers.utils.formatEther(balanceStmcBusd));    
     }
-    const test = 0;
+
+    if(options.testSwap) {
+      /////////////////////////////  SMT --> BNB Swapping ////////////////////////////////
+      let balance = await smartTokenInstance.balanceOf(owner.address);
+      console.log("SMT token balance: ", ethers.utils.formatEther(balance));    
+      balance = await ethers.provider.getBalance(owner.address);
+      console.log("BNB token balance: ", ethers.utils.formatEther(balance));
+
+      let tx = await smartTokenInstance.approve(
+          routerInstance.address,
+          ethers.utils.parseUnits("1000", 18)
+      );
+      await tx.wait();
+      let swapAmount = ethers.utils.parseUnits("500", 18);
+      let amountsOut = await routerInstance.getAmountsOut(
+        swapAmount,
+        [
+          await smartCompInstance.getSMT(), 
+          await routerInstance.WETH()
+        ]
+      );
+      console.log("excepted swap balance: ", ethers.utils.formatEther(amountsOut[1]));
+
+      tx = await routerInstance.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        swapAmount, 0,
+        [
+          await smartCompInstance.getSMT(), 
+          await routerInstance.WETH()
+        ],
+        owner.address,
+        "99000000000000000"
+      );
+      await tx.wait();
+      console.log("swapped tx: ", tx.hash);
+      balance = await smartTokenInstance.balanceOf(owner.address);
+      console.log("SMT token balance: ", ethers.utils.formatEther(balance));    
+      balance = await ethers.provider.getBalance(owner.address);
+      console.log("BNB token balance: ", ethers.utils.formatEther(balance));
+      cyan("\n==============================================\n");
+      /////////////////////////////  SMT --> BUSD Swapping ////////////////////////////////
+      balance = await smartTokenInstance.balanceOf(owner.address);
+      console.log("SMT token balance: ", ethers.utils.formatEther(balance));    
+      balance = await busdToken.balanceOf(owner.address);
+      console.log("BUSD token balance: ", ethers.utils.formatEther(balance));
+
+      tx = await smartTokenInstance.approve(
+          routerInstance.address,
+          ethers.utils.parseUnits("1000", 18)
+      );
+      await tx.wait();
+      swapAmount = ethers.utils.parseUnits("200", 18);
+      amountsOut = await routerInstance.getAmountsOut(
+        swapAmount,
+        [
+          await smartCompInstance.getSMT(), 
+          await smartCompInstance.getBUSD()
+        ]
+      );
+      console.log("excepted swap balance: ", ethers.utils.formatEther(amountsOut[1]));
+      tx = await routerInstance.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        swapAmount,
+        0,
+        [
+          await smartCompInstance.getSMT(),
+          await smartCompInstance.getBUSD()
+        ],
+        owner.address,
+        "99000000000000000"
+      );
+      await tx.wait();
+      console.log("swapped tx: ", tx.hash);
+      balance = await smartTokenInstance.balanceOf(owner.address);
+      console.log("SMT token balance: ", ethers.utils.formatEther(balance));    
+      balance = await busdToken.balanceOf(owner.address);
+      console.log("BUSD token balance: ", ethers.utils.formatEther(balance));
+    }
+
+    if(options.testSMTTokenTransfer) {
+      // let smartTokenInstance = await ethers.getContractAt("SmartToken", stmcTokenAddress);
+      const tranferTx =  await smartTokenInstance.transfer(anotherUser.address, ethers.utils.parseUnits("3000", 18));
+      await tranferTx.wait();
+      console.log("owner -> another user transfer tx:", tranferTx.hash);
+  
+      tranferTx =  await smartTokenInstance.connect(anotherUser).transfer(
+        userWallet.address, 
+        ethers.utils.parseUnits("500", 18)
+      );
+      await tranferTx.wait();
+      console.log("another user -> user transfer tx:", tranferTx.hash);
+  
+      let balance = await smartTokenInstance.balanceOf(anotherUser.address);
+      console.log("another user balance:",
+                  ethers.utils.formatEther(balance.toString()));
+      balance = await smartTokenInstance.balanceOf(userWallet.address);
+      console.log("user balance:",
+                  ethers.utils.formatEther(balance.toString()));
+    }
+
 }
 
 // We recommend this pattern to be able to use async/await everywhere
