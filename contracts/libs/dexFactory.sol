@@ -3,14 +3,18 @@
 pragma solidity ^0.8.4;
 // pragma solidity ^0.5.16;
 
+import "hardhat/console.sol";
+
 interface IPancakeSwapFactory {
     event PairCreated(address indexed token0, address indexed token1, address pair, uint);
 
     function feeTo() external view returns (address);
     function feeToSetter() external view returns (address);
+    function init_code_pair_hash() external pure returns(bytes32);
+
 
     function getPair(address tokenA, address tokenB) external view returns (address pair);
-    function allPairs(uint) external view returns (address[] memory);
+    function allPairs() external view returns (address[] memory);
     function allPairsLength() external view returns (uint);
 
     function createPair(address tokenA, address tokenB) external returns (address pair);
@@ -19,7 +23,45 @@ interface IPancakeSwapFactory {
     function setFeeToSetter(address) external;
 }
 
-interface IPancakeSwapPair {
+interface IERC20 {
+    event Approval(address indexed owner, address indexed spender, uint value);
+    event Transfer(address indexed from, address indexed to, uint value);
+
+    function name() external view returns (string memory);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+    function totalSupply() external view returns (uint);
+    function balanceOf(address owner) external view returns (uint);
+    function allowance(address owner, address spender) external view returns (uint);
+
+    function approve(address spender, uint value) external returns (bool);
+    function transfer(address to, uint value) external returns (bool);
+    function transferFrom(address from, address to, uint value) external returns (bool);
+}
+
+interface IPancakeSwapERC20 {
+    event Approval(address indexed owner, address indexed spender, uint value);
+    event Transfer(address indexed from, address indexed to, uint value);
+
+    function name() external pure returns (string memory);
+    function symbol() external pure returns (string memory);
+    function decimals() external pure returns (uint8);
+    function totalSupply() external view returns (uint);
+    function balanceOf(address owner) external view returns (uint);
+    function allowance(address owner, address spender) external view returns (uint);
+
+    function approve(address spender, uint value) external returns (bool);
+    function transfer(address to, uint value) external returns (bool);
+    function transferFrom(address from, address to, uint value) external returns (bool);
+
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+    function PERMIT_TYPEHASH() external pure returns (bytes32);
+    function nonces(address owner) external view returns (uint);
+
+    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+}
+
+interface IPancakeSwapPair is IPancakeSwapERC20{
     event Mint(address indexed sender, uint amount0, uint amount1);
     event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
     event Swap(
@@ -50,44 +92,6 @@ interface IPancakeSwapPair {
     function initialize(address, address) external;
 }
 
-interface IPancakeSwapERC20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external pure returns (string memory);
-    function symbol() external pure returns (string memory);
-    function decimals() external pure returns (uint8);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-    function PERMIT_TYPEHASH() external pure returns (bytes32);
-    function nonces(address owner) external view returns (uint);
-
-    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
-}
-
-interface IERC20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function decimals() external view returns (uint8);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-}
-
 interface IPancakeSwapCallee {
     function PancakeSwapCall(address sender, uint amount0, uint amount1, bytes calldata data) external;
 }
@@ -107,7 +111,7 @@ contract PancakeSwapERC20 is IPancakeSwapERC20 {
     bytes32 _PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
     mapping(address => uint) _nonces;
 
-    constructor() public {
+    constructor() {
         uint chainId;
         assembly {
             chainId := chainid()
@@ -250,16 +254,16 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         unlocked = 1;
     }
 
-    constructor() public {
+    constructor() {
         _factory = msg.sender;
     }
 
     // called once by the factory at time of deployment
-    function initialize(address token0, address token1) 
+    function initialize(address token00, address token11) 
         external override {
         require(msg.sender == _factory, 'PancakeSwap: FORBIDDEN'); // sufficient check
-        _token0 = token0;
-        _token1 = token1;
+        _token0 = token00;
+        _token1 = token11;
     }
 
     // function MINIMUM_LIQUIDITY() external override pure returns (uint) {
@@ -318,7 +322,7 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         uint112 reserve0, 
         uint112 reserve1
     ) private {
-        // require(uint112(balance0) <= uint112(-1) && uint112(balance1) <= uint112(-1), 'PancakeSwap: OVERFLOW');
+        require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, 'PancakeSwap: OVERFLOW');
         uint32 blockTimestamp = uint32(block.timestamp % 2**32);
         uint32 timeElapsed = blockTimestamp - _blockTimestampLast; // overflow is desired
         if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
@@ -339,11 +343,11 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
     ) private returns (bool feeOn) {
         address feeTo = IPancakeSwapFactory(_factory).feeTo();
         feeOn = feeTo != address(0);
-        uint kLast = _kLast; // gas savings
+        uint kLast11 = _kLast; // gas savings
         if (feeOn) {
-            if (kLast != 0) {
+            if (kLast11 != 0) {
                 uint rootK = Math.sqrt(uint(reserve0).mul(reserve1));
-                uint rootKLast = Math.sqrt(kLast);
+                uint rootKLast = Math.sqrt(kLast11);
                 if (rootK > rootKLast) {
                     uint numerator = _totalSupply.mul(rootK.sub(rootKLast));
                     uint denominator = rootK.mul(5).add(rootKLast);
@@ -351,7 +355,7 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
                     if (liquidity > 0) _mint(feeTo, liquidity);
                 }
             }
-        } else if (kLast != 0) {
+        } else if (kLast11 != 0) {
             _kLast = 0;
         }
     }
@@ -385,10 +389,10 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
     function burn(address to) 
         external override lock returns (uint amount0, uint amount1) {
         (uint112 reserve0, uint112 reserve1,) = getReserves(); // gas savings
-        address token0 = _token0;                                // gas savings
-        address token1 = _token1;                                // gas savings
-        uint balance0 = IERC20(token0).balanceOf(address(this));
-        uint balance1 = IERC20(token1).balanceOf(address(this));
+        address token00 = _token0;                                // gas savings
+        address token11 = _token1;                                // gas savings
+        uint balance0 = IERC20(token00).balanceOf(address(this));
+        uint balance1 = IERC20(token11).balanceOf(address(this));
         uint liquidity = _balanceOf[address(this)];
 
         bool feeOn = _mintFee(reserve0, reserve1);
@@ -397,10 +401,10 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         amount1 = liquidity.mul(balance1) / totalSupply; // using balances ensures pro-rata distribution
         require(amount0 > 0 && amount1 > 0, 'PancakeSwap: INSUFFICIENT_LIQUIDITY_BURNED');
         _burn(address(this), liquidity);
-        _safeTransfer(token0, to, amount0);
-        _safeTransfer(token1, to, amount1);
-        balance0 = IERC20(token0).balanceOf(address(this));
-        balance1 = IERC20(token1).balanceOf(address(this));
+        _safeTransfer(token00, to, amount0);
+        _safeTransfer(token11, to, amount1);
+        balance0 = IERC20(token00).balanceOf(address(this));
+        balance1 = IERC20(token11).balanceOf(address(this));
 
         _update(balance0, balance1, reserve0, reserve1);
         if (feeOn) _kLast = uint(_reserve0).mul(_reserve1); // reserve0 and reserve1 are up-to-date
@@ -421,14 +425,15 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         uint balance0;
         uint balance1;
         { // scope for _token{0,1}, avoids stack too deep errors
-        address token0 = _token0;
-        address token1 = _token1;
-        require(to != token0 && to != token1, 'PancakeSwap: INVALID_TO');
-        if (amount0Out > 0) _safeTransfer(token0, to, amount0Out); // optimistically transfer tokens
-        if (amount1Out > 0) _safeTransfer(token1, to, amount1Out); // optimistically transfer tokens
+        address token00 = _token0;
+        address token11 = _token1;
+        // console.log("<<<<token00: %s <<<<<");
+        // require(to != token00 && to != token11, 'PancakeSwap: INVALID_TO');
+        if (amount0Out > 0) _safeTransfer(token00, to, amount0Out); // optimistically transfer tokens
+        if (amount1Out > 0) _safeTransfer(token11, to, amount1Out); // optimistically transfer tokens
         if (data.length > 0) IPancakeSwapCallee(to).PancakeSwapCall(msg.sender, amount0Out, amount1Out, data);
-        balance0 = IERC20(token0).balanceOf(address(this));
-        balance1 = IERC20(token1).balanceOf(address(this));
+        balance0 = IERC20(token00).balanceOf(address(this));
+        balance1 = IERC20(token11).balanceOf(address(this));
         }
         uint amount0In = balance0 > reserve0 - amount0Out ? balance0 - (reserve0 - amount0Out) : 0;
         uint amount1In = balance1 > reserve1 - amount1Out ? balance1 - (reserve1 - amount1Out) : 0;
@@ -437,19 +442,18 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         uint balance0Adjusted = balance0.mul(1000).sub(amount0In.mul(3));
         uint balance1Adjusted = balance1.mul(1000).sub(amount1In.mul(3));
 
-        require(balance0Adjusted.mul(balance1Adjusted) >= uint(reserve0).mul (reserve1).mul(1000**2), 'PancakeSwap: K');
+        require(balance0Adjusted.mul(balance1Adjusted) >= uint(reserve0).mul(reserve1).mul(1000**2), 'PancakeSwap: K');
         }
-
         _update(balance0, balance1, reserve0, reserve1);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
     // force balances to match reserves
     function skim(address to) external override lock {
-        address token0 = _token0; // gas savings
-        address token1 = _token1; // gas savings
-        _safeTransfer(token0, to, IERC20(token0).balanceOf(address(this)).sub(_reserve0));
-        _safeTransfer(token1, to, IERC20(token1).balanceOf(address(this)).sub(_reserve1));
+        address token00 = _token0; // gas savings
+        address token11 = _token1; // gas savings
+        _safeTransfer(token00, to, IERC20(token00).balanceOf(address(this)).sub(_reserve0));
+        _safeTransfer(token11, to, IERC20(token11).balanceOf(address(this)).sub(_reserve1));
     }
 
     // force reserves to match balances
@@ -469,8 +473,9 @@ contract PancakeSwapFactory is IPancakeSwapFactory {
 
     bytes32 public constant INIT_CODE_PAIR_HASH = keccak256(abi.encodePacked(type(PancakeSwapPair).creationCode));
     
-    constructor(address feeToSetter) public {
-        _feeToSetter = feeToSetter;
+    constructor(address feeToSetterAddress) {
+        _feeToSetter = feeToSetterAddress;
+        console.log("this address: %s", _feeToSetter);
     }
 
     function getPair(address tokenA, address tokenB) 
@@ -478,7 +483,7 @@ contract PancakeSwapFactory is IPancakeSwapFactory {
         return _getPair[tokenA][tokenB];
     }
 
-    function allPairs(uint) external view override returns (address[] memory) {
+    function allPairs() external view override returns (address[] memory) {
         return _allPairs;
     }
 
@@ -492,6 +497,10 @@ contract PancakeSwapFactory is IPancakeSwapFactory {
 
     function feeToSetter() external view override returns (address){
         return _feeToSetter;
+    }
+
+    function init_code_pair_hash() external pure override returns(bytes32) {
+        return INIT_CODE_PAIR_HASH;
     }
 
     function createPair(address tokenA, address tokenB) external override returns (address pair) {
@@ -511,14 +520,14 @@ contract PancakeSwapFactory is IPancakeSwapFactory {
         emit PairCreated(token0, token1, pair, _allPairs.length);
     }
 
-    function setFeeTo(address feeTo) external override {
+    function setFeeTo(address feeAddress) external override {
         require(msg.sender == _feeTo, 'PancakeSwap: FORBIDDEN');
-        _feeTo = feeTo;
+        _feeTo = feeAddress;
     }
 
-    function setFeeToSetter(address feeToSetter) external override {
+    function setFeeToSetter(address feeToSetterAddress) external override {
         require(msg.sender == _feeToSetter, 'PancakeSwap: FORBIDDEN');
-        _feeToSetter = feeToSetter;
+        _feeToSetter = feeToSetterAddress;
     }
 }
 

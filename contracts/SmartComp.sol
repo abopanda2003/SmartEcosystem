@@ -170,8 +170,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     smartFarm = ISmartFarm(_address);
 
     emit NewSmartFarm(oldSmartFarm, smartFarm);
-  } 
-
+  }
 
   /**
     * @notice Sets a new golden tree pool contract for the comptroller
@@ -184,8 +183,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     goldenTreePool = IGoldenTreePool(_address);
 
     emit NewGoldenTreePool(oldGoldenTreePool, goldenTreePool);
-  } 
-
+  }
 
   /**
     * @notice Sets a new achievement system contract for the comptroller

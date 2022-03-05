@@ -8,7 +8,8 @@ const projectId = "d0fb6991f2531e92d0b3bf75";
 const privateKey = "441f9868114e069248d1e6d22b3db155629b964584e36b0a8469a545ffa47c93";
 const privateKey2 = "1ba6c7cc75d518f067512b9d8973481e1075b59b5ee218e81ca96c03e4030c22";
 const privateKey3 = "43fc6f8e12b711efbc1355b630746179275862afc3ae67c365d2a7e663b1e160";
-const apiKeyForEtherscan = "PJ2V5H4XH4P3PYXJE5JUM6VQRPRHQ56HDV";
+// const apiKeyForEtherscan = "PJ2V5H4XH4P3PYXJE5JUM6VQRPRHQ56HDV";
+const apiKeyForEtherscan = "IMM4ABGFWDS8E1XGB66GQZGRQND4FQNPH1";
 const optimizerEnabled = !process.env.OPTIMIZER_DISABLED;
 
 /**
@@ -126,6 +127,16 @@ module.exports = {
   },
   solidity: {
       compilers: [
+            {
+              version: '0.8.0',
+              settings: {
+                  optimizer: {
+                      enabled: optimizerEnabled,
+                      runs: 2000,
+                  },
+                  evmVersion: 'berlin',
+              }
+          },
           {
               version: '0.8.4',
               settings: {

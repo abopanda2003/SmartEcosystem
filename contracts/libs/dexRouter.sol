@@ -3,23 +3,43 @@
 pragma solidity ^0.8.4;
 // pragma solidity ^0.6.12;
 
+import "hardhat/console.sol";
+
 interface IPancakeSwapFactory {
     event PairCreated(address indexed token0, address indexed token1, address pair, uint);
 
     function feeTo() external view returns (address);
     function feeToSetter() external view returns (address);
+    function init_code_pair_hash() external pure returns(bytes32);
 
-    function getPair(address tokenA, address tokenB) external view returns (address);
-    function allPairs(uint) external view returns (address[] memory);
+
+    function getPair(address tokenA, address tokenB) external view returns (address pair);
+    function allPairs() external view returns (address[] memory);
     function allPairsLength() external view returns (uint);
 
-    function createPair(address tokenA, address tokenB) external returns (address);
+    function createPair(address tokenA, address tokenB) external returns (address pair);
 
     function setFeeTo(address) external;
     function setFeeToSetter(address) external;
 }
 
-interface IPancakeSwapPair {
+interface IERC20 {
+    event Approval(address indexed owner, address indexed spender, uint value);
+    event Transfer(address indexed from, address indexed to, uint value);
+
+    function name() external view returns (string memory);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+    function totalSupply() external view returns (uint);
+    function balanceOf(address owner) external view returns (uint);
+    function allowance(address owner, address spender) external view returns (uint);
+
+    function approve(address spender, uint value) external returns (bool);
+    function transfer(address to, uint value) external returns (bool);
+    function transferFrom(address from, address to, uint value) external returns (bool);
+}
+
+interface IPancakeSwapERC20 {
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
 
@@ -39,7 +59,9 @@ interface IPancakeSwapPair {
     function nonces(address owner) external view returns (uint);
 
     function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+}
 
+interface IPancakeSwapPair is IPancakeSwapERC20{
     event Mint(address indexed sender, uint amount0, uint amount1);
     event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
     event Swap(
@@ -52,7 +74,7 @@ interface IPancakeSwapPair {
     );
     event Sync(uint112 reserve0, uint112 reserve1);
 
-    function MINIMUM_LIQUIDITY() external pure returns (uint);
+    // function MINIMUM_LIQUIDITY() external view returns (uint);
     function factory() external view returns (address);
     function token0() external view returns (address);
     function token1() external view returns (address);
@@ -202,22 +224,6 @@ interface IPancakeSwapRouter{
     ) external;
 }
 
-interface IERC20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function decimals() external view returns (uint8);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-}
-
 interface IWETH {
     function deposit() external payable;
     function transfer(address to, uint value) external returns (bool);
@@ -235,7 +241,7 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
         _;
     }
 
-    constructor(address _factory, address _WETH) public {
+    constructor(address _factory, address _WETH)  {
         factoryAddr = _factory;
         WETHAddr = _WETH;
     }
@@ -281,6 +287,7 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
             }
         }
     }
+
     function addLiquidity(
         address tokenA,
         address tokenB,
@@ -291,12 +298,21 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
-        (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
+        (amountA, amountB) = _addLiquidity(
+            tokenA, 
+            tokenB, 
+            amountADesired, 
+            amountBDesired, 
+            amountAMin, 
+            amountBMin
+        );
         address pair = PancakeSwapLibrary.pairFor(factoryAddr, tokenA, tokenB);
+        // console.log("router pair: %s", pair);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
         TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
         liquidity = IPancakeSwapPair(pair).mint(to);
     }
+
     function addLiquidityETH(
         address token,
         uint amountTokenDesired,
@@ -333,7 +349,8 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
         uint deadline
     ) public virtual override ensure(deadline) returns (uint amountA, uint amountB) {
         address pair = PancakeSwapLibrary.pairFor(factoryAddr, tokenA, tokenB);
-        IPancakeSwapPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
+        // TransferHelper.safeTransferFrom(pair, msg.sender, pair, liquidity);// send liquidity to pair
+        IPancakeSwapPair(pair).transferFrom(msg.sender, pair, liquidity); 
         (uint amount0, uint amount1) = IPancakeSwapPair(pair).burn(to);
         (address token0,) = PancakeSwapLibrary.sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
@@ -547,7 +564,10 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
 
     // **** SWAP (supporting fee-on-transfer tokens) ****
     // requires the initial amount to have already been sent to the first pair
-    function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
+    function _swapSupportingFeeOnTransferTokens(
+        address[] memory path, 
+        address _to
+    ) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0,) = PancakeSwapLibrary.sortTokens(input, output);
@@ -564,6 +584,7 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
             address to = i < path.length - 2 ? PancakeSwapLibrary.pairFor(factoryAddr, output, path[i + 2]) : _to;
             pair.swap(amount0Out, amount1Out, to, new bytes(0));
         }
+
     }
 
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
@@ -708,16 +729,19 @@ library PancakeSwapLibrary {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
         pair = address(uint160(uint(keccak256(abi.encodePacked(
                 hex'ff',
-                factory,
+                factory,                
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'7ee08c75b84d69e0daad65ceb7f5f0619692f677eaa7a76ede7f4df949b815d6' // init code hash
+                IPancakeSwapFactory(factory).init_code_pair_hash()
+                // hex'eae8b54904ab91cb64d948d2a57dafa384db909fe8c173ae8c8d6106ec797577'
+                // hex'7ee08c75b84d69e0daad65ceb7f5f0619692f677eaa7a76ede7f4df949b815d6' // init code hash
             )))));
     }
 
     // fetches and sorts the reserves for a pair
     function getReserves(address factory, address tokenA, address tokenB) internal view returns (uint reserveA, uint reserveB) {
         (address token0,) = sortTokens(tokenA, tokenB);
-        (uint reserve0, uint reserve1,) = IPancakeSwapPair(pairFor(factory, tokenA, tokenB)).getReserves();
+        address pair = pairFor(factory, tokenA, tokenB);
+        (uint reserve0, uint reserve1,) = IPancakeSwapPair(pair).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 

@@ -2,9 +2,9 @@
 // pragma solidity ^0.6.12;
 pragma solidity ^0.8.4;
 
-contract WICICB {
-    string public name     = "Wrapped ICICB";
-    string public symbol   = "WICICB";
+contract WETH {
+    string public name     = "Wrapped ETH";
+    string public symbol   = "WETH";
     uint8  public decimals = 18;
 
     event  Approval(address indexed src, address indexed guy, uint wad);

@@ -44,8 +44,9 @@ interface ISmartArmy {
         uint256 extendFeeBNB;       // extend Fee as BNB
         address feeAddress;
     }
-    
+
     function licenseOf(address account) external view returns(UserLicense memory);
+    function licenseTypeOf(uint256 level) external view returns(LicenseType memory);
     function lockedLPOf(address account) external view returns(uint256);
     function isActiveLicense(address account) external view returns(bool);
     function isEnabledIntermediary(address account) external view returns(bool);

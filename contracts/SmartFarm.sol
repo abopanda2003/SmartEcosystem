@@ -71,18 +71,23 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   event Claimed(address indexed account, uint256 amount);
 
 
-  function initialize(address _comp, address _rewardWallet) public initializer {
+  function initialize(address _comp, address _rewardWallet) 
+    public initializer 
+  {
 		__Ownable_init();
     __SmartFarm_init_unchained(_comp, _rewardWallet);
   }
 
-  function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+  function _authorizeUpgrade(address newImplementation) 
+    internal override onlyOwner 
+  {    
+  }
 
 
-  function __SmartFarm_init_unchained(address _comp, address _rewardWallet)
-        internal
-        initializer
-    {
+  function __SmartFarm_init_unchained(
+    address _comp, 
+    address _rewardWallet
+  ) internal initializer {
       comptroller = ISmartComp(_comp);
       
       farmingTax_referral = 1000;
@@ -95,13 +100,15 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       farmingRewardWallet = _rewardWallet;
 
       feeAddress = msg.sender;
-    }  
+    }
 
   /**
   * @notice Sets a new comptroller
   * @dev Admin function to set a new comptroller
   */
-  function setComptroller(ISmartComp newComptroller) external onlyOwner {
+  function setComptroller(ISmartComp newComptroller) 
+    external onlyOwner 
+  {
     // Ensure invoke comptroller.isComptroller() returns true
     require(newComptroller.isComptroller(), "marker method returned false");
     // Set comptroller to newComptroller
@@ -140,10 +147,8 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function updateFarmingRewardParams(
     uint256 percent,
     address wallet
-  ) 
-    external
-    onlyOwner 
-  {
+  ) external onlyOwner {
+
     require(wallet != address(0x0), "SmartFarm#updateFarmingReward: invalid wallet address");
     require(percent <= 10_000, "SmartFarm#updateFarmingReward: too big percent");
 
@@ -184,8 +189,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    * @param _reward Units of RewardToken that have been added to the pool
    */
   function notifyRewardAmount(uint _reward)
-    external
-    override
+    external override
     onlyRewardsDistributor
     updatePassiveReward(address(0))
   {
@@ -294,8 +298,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     uint256 duration = end - start;
     uint256 amount = duration * balanceOf(account) * farmingRewardPercent / 86400 / 10_000;
     return uInfo.rewards + amount;
-  }
-  
+  }  
 
   /**
    * @dev Calculates the amount of unclaimed rewards a user has earned
@@ -344,7 +347,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     return liquidity;
   }
 
-
   /**
    * @notice Withdraw Staked SMT
    */
@@ -385,7 +387,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     return smtAmount;
   }
-  
 
   /**
    * ///@notice Redeem SMT rewards from staking
@@ -418,10 +419,11 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    * Swap half as BUSD, 
    * Add Liquidity => LP token Lock
    */
-  function _tranferSmtToContract(address _from, address account, uint256 _amount) 
-    private 
-    returns(uint) 
-  {
+  function _tranferSmtToContract(
+    address _from, 
+    address account, 
+    uint256 _amount
+  ) private returns(uint) {
     IERC20 smtToken = comptroller.getSMT();
     IERC20 busdToken = comptroller.getBUSD();
   
@@ -457,10 +459,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function _distributeFarmingTax(
     address account,
     uint256 farmingAmount
-  )
-    internal
-    returns (uint256)
-  {
+  ) internal returns (uint256) {
     // distribute farming tax
     // 10% goes to referral system
     // 3% goes to golden tree pool
@@ -574,8 +573,8 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     // generate the uniswap pair path of token -> busd
     address[] memory path = new address[](2);
-    path[1] = address(smtToken);
     path[0] = address(busdToken);
+    path[1] = address(smtToken);
 
     busdToken.approve(address(uniswapV2Router), tokenAmount);
     

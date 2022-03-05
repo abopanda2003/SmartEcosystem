@@ -20,6 +20,7 @@ import './interfaces/ISmartArmy.sol';
 import './interfaces/ISmartLadder.sol';
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/IUniswapFactory.sol';
+import 'hardhat/console.sol';
 
 contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   // using SafeMath for uint256;
@@ -35,6 +36,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   mapping(uint256 => LicenseType) public licenseTypes;
 
   uint256 totalLicenses;
+  uint256 licenseIndex;
   /// @dev User License Mapping  licenseId => License
   mapping(uint256 => UserLicense) public licenses;
   /// @dev User address => licenseId
@@ -45,6 +47,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
 
 
   /// @dev Events
+  event LicenseTypeCreated(uint256 level, LicenseType _type);
   event LicenseTypeUpdated(uint256 level, LicenseType _type);
   event RegisterLicense(address account, UserLicense license);
   event ActivatedLicense(address account, UserLicense license);
@@ -82,10 +85,11 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * 
    */
   function _initLicenseTypes() internal {
-    updateLicenseType(1, "Trial",       100 * 10 ** 18,    1, true);
-    updateLicenseType(2, "Opportunist", 1_000 * 10 ** 18,  3, true);
-    updateLicenseType(3, "Runner",      5_000 * 10 ** 18,  5, true);
-    updateLicenseType(4, "Visionary",   10_000 * 10 ** 18, 7, true);
+    licenseIndex = 1;
+    createLicense("Trial",       100 * 10 ** 18,    1, true);
+    createLicense("Opportunist", 1_000 * 10 ** 18,  3, true);
+    createLicense("Runner",      5_000 * 10 ** 18,  5, true);
+    createLicense("Visionary",   10_000 * 10 ** 18, 7, true);
   }
 
   /**
@@ -115,6 +119,44 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     feeInfo.feeAddress = _feeAddress;
   }
   
+  function fetchAllLicenses() 
+    public view returns(LicenseType[] memory)
+  {
+    LicenseType[] memory allLicenses = new LicenseType[](countOfLicenses());
+
+    for(uint i=1; i<licenseIndex; i++)
+      allLicenses[i-1] = licenseTypes[i];
+
+    return allLicenses;
+  }
+
+  function countOfLicenses() 
+    public view returns(uint256) 
+  {
+    return licenseIndex - 1;
+  }
+
+  /**
+   * Create License type
+   */
+  function createLicense(
+    string memory _name,
+    uint256 _price,
+    uint256 _ladderLevel,
+    bool _isValid
+  ) public onlyOwner {
+    require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
+
+    LicenseType storage _type = licenseTypes[licenseIndex];
+    _type.level = licenseIndex;
+    _type.name  = _name;
+    _type.price = _price;
+    _type.ladderLevel = _ladderLevel;
+    _type.duration = LICENSE_EXPIRE;
+    _type.isValid = _isValid;
+    emit LicenseTypeCreated(licenseIndex, _type);
+    licenseIndex += 1;
+  }
 
   /**
    * Update License type
@@ -148,17 +190,14 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   function updateLicenseTypePrice(
     uint256 _level, 
     uint256 _price
-  ) 
-    public 
-    onlyOwner 
-  {
+  ) public onlyOwner {
     require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
 
     LicenseType storage _type = licenseTypes[_level];
     _type.price = _price;
 
     emit LicenseTypeUpdated(_level, _type);
-  } 
+  }
 
   /**
    * Start License
@@ -167,11 +206,9 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   function registerLicense(
     uint256 _level,
     address _sponsor,
-    string memory _username, 
+    string memory _username,
     string memory _telegram
-    ) 
-      external 
-    {
+  ) external {
     require(licenseOf(msg.sender).status == LicenseStatus.None
       || licenseOf(msg.sender).status == LicenseStatus.Expired, "SmartArmy#startLicense: already started");
 
@@ -202,7 +239,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     } else {
       info.sponsor  = prevSponsor == address(0x0) ? _sponsor : prevSponsor;
     }
-    
+
     emit RegisterLicense(_msgSender(), license);
   }
 
@@ -212,6 +249,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    */
   function activateLicense() external {
     UserLicense storage license = licenses[userLicenses[msg.sender]];
+    // console.log("license id: %s", userLicenses[msg.sender]);
     require(license.status == LicenseStatus.Pending, "SmartArmy#activateLicense: not registered");
 
     LicenseType memory _type = licenseTypes[license.level];
@@ -220,6 +258,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     // Transfer SMT token for License type to this contract
     uint256 smtAmount = _type.price;
     uint amount = _tranferSmtToContract(_msgSender(), smtAmount);
+    console.log("--------------------------------->>>>");
     
     uint256 liquidity = comptroller.getSmartFarm().stakeSMT(_msgSender(), amount);
     require(liquidity > 0, "SmartArmy#activateLicense: failed to add liquidity");
@@ -260,7 +299,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Extend License
    *  
    */
-  function extendLicense() external {
+  function extendLicense() external payable {
     uint256 userLicenseId = userLicenses[_msgSender()];
     UserLicense storage license = licenses[userLicenseId];
 
@@ -277,7 +316,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     emit ExtendLicense(_msgSender(), license);
   }
 
-
   /**
    * Transfer smt token to contract.
    * Swap half as BUSD, 
@@ -288,10 +326,9 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     returns(uint) 
   {
     IERC20 smtToken = comptroller.getSMT();
-    
     // Transfer SMT token from user to contract
     uint256 beforeBalance = smtToken.balanceOf(address(this));
-    IERC20(smtToken).transferFrom(_from, address(this), _amount);
+    smtToken.transferFrom(_from, address(this), _amount);
     uint256 amount = smtToken.balanceOf(address(this)) - beforeBalance;
     require(amount > 0, "SmartArmy#transferSmtToContract: faild to transfer SMT token");
 
@@ -332,15 +369,23 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       return licenses[userLicenses[account]];
   }
 
+  /**
+   * Get License Type with level
+   */
+  function licenseTypeOf(uint256 level) 
+    public 
+    view
+    override
+    returns(LicenseType memory)
+  {
+    return licenseTypes[level];
+  }
 
   /**
    * Get Locked SMT-BUSD LP token amount on Farming contract
    */
   function lockedLPOf(address account) 
-    public 
-    view
-    override
-    returns(uint256) 
+    public view override returns(uint256) 
   {
     return licenseOf(account).lpLocked;
   }
@@ -363,7 +408,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       return 0;
     }
   }
-  
+
   /**
    * Check if license is Active status and not expired
    */
@@ -376,7 +421,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       UserLicense memory license = licenseOf(account);
       return license.status == LicenseStatus.Active && license.expireAt > block.timestamp;
   }
-
 
   /**
    * Get License active duration from `from` to `to`
@@ -401,10 +445,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       return (0, 0);
     }
 
-    return (
-      start,
-      end
-    );
+    return (start, end);
   }
 
   /**
@@ -420,4 +461,5 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       return (license.status == LicenseStatus.Pending && block.timestamp > license.startAt + 12 * 3600) 
         || license.status == LicenseStatus.Active;
   }
+
 }
