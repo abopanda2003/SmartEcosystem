@@ -2,10 +2,6 @@
  *Submitted for verification at BscScan.com on 2021-02-27
 */
 
-/**
- *Submitted for verification at BscScan.com on 2020-09-02
-*/
-
 pragma solidity 0.5.16;
 
 interface IBEP20 {
@@ -535,6 +531,7 @@ contract BEP20Token is Context, IBEP20, Ownable {
 
     _balances[sender] = _balances[sender].sub(amount, "BEP20: transfer amount exceeds balance");
     _balances[recipient] = _balances[recipient].add(amount);
+
     emit Transfer(sender, recipient, amount);
   }
 

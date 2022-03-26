@@ -12,6 +12,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import "./interfaces/ISmartComp.sol";
+import "./SMTBridge.sol";
 import "hardhat/console.sol";
 
 contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
@@ -21,6 +22,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   ISmartFarm public smartFarm;
   IGoldenTreePool public goldenTreePool;
   ISmartAchievement public smartAchievement;
+  address public smartBridge;
 
   IUniswapV2Router02 public uniswapV2Router;
 
@@ -43,24 +45,24 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   event NewSmartAchievement(ISmartAchievement oldAchievement, ISmartAchievement newAchievement);
 
 
-  function initialize() public initializer {
+  function initialize(address _router, address _busd) public initializer {
 		__Ownable_init();
-    __SmartComp_init_unchained();
+    __SmartComp_init_unchained(_router, _busd);
   }
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
 
-  function __SmartComp_init_unchained()
+  function __SmartComp_init_unchained(address _router, address _busd)
     internal    
     initializer
   {
-    busdToken = IERC20(0x78867BbEeF44f2326bF8DDd1941a4439382EF2A7);  // Testnet
+    busdToken = IERC20(_busd);  // Testnet
     // Pancake V2 router
-    IUniswapV2Router02 _uniswapRouter = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); 
+    // IUniswapV2Router02 _uniswapRouter = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3); 
+    IUniswapV2Router02 _uniswapRouter = IUniswapV2Router02(_router);
     uniswapV2Router = _uniswapRouter;
   }
-
 
   /*** View Functions ***/
   function isComptroller() external override pure returns(bool) {
@@ -107,6 +109,10 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     return smartAchievement;
   }
 
+  function getSmartBridge() external override view returns(address) {
+    return smartBridge;
+  }
+
   /*** Admin Functions ***/
 
   /**
@@ -134,15 +140,22 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   }
 
   /**
+    * @notice Sets a new BUSD contract for the comptroller
+    * 
+    */
+  function setSmartBridge(address _address) external onlyOwner {
+      require(_address != address(0x0), "input address can't be not zero address");
+      smartBridge = _address;
+  }
+
+  /**
     * @notice Sets a new smart ladder contract for the comptroller
     * 
     */
   function setSmartLadder(address _address) external onlyOwner {
     // Track the old for the comptroller
     ISmartLadder oldSmartLadder = smartLadder;
-
     smartLadder = ISmartLadder(_address);
-
     emit NewSmartLadder(oldSmartLadder, smartLadder);
   }
 
@@ -153,9 +166,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   function setSmartArmy(address _address) external onlyOwner {
     // Track the old for the comptroller
     ISmartArmy oldSmartArmy = smartArmy;
-
     smartArmy = ISmartArmy(_address);
-
     emit NewSmartArmy(oldSmartArmy, smartArmy);
   } 
 
@@ -166,9 +177,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   function setSmartFarm(address _address) external onlyOwner {
     // Track the old for the comptroller
     ISmartFarm oldSmartFarm = smartFarm;
-
     smartFarm = ISmartFarm(_address);
-
     emit NewSmartFarm(oldSmartFarm, smartFarm);
   }
 
@@ -179,22 +188,17 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   function setGoldenTreePool(address _address) external onlyOwner {
     // Track the old for the comptroller
     IGoldenTreePool oldGoldenTreePool = goldenTreePool;
-
     goldenTreePool = IGoldenTreePool(_address);
-
     emit NewGoldenTreePool(oldGoldenTreePool, goldenTreePool);
   }
 
   /**
     * @notice Sets a new achievement system contract for the comptroller
-    * 
     */
   function setSmartAchievement(address _address) external onlyOwner {
     // Track the old for the comptroller
     ISmartAchievement oldAchievement = smartAchievement;
-
     smartAchievement = ISmartAchievement(_address);
-
     emit NewSmartAchievement(oldAchievement, smartAchievement);
-  } 
+  }
 }

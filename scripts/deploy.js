@@ -11,6 +11,7 @@ const uniswapRouterABI = require("../artifacts/contracts/interfaces/IUniswapRout
 const bep20ABI = require("../artifacts/contracts/libs/IBEP20.sol/IBEP20.json").abi;
 
 const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay * 1000));
+
 let owner, userWallet, anotherUser;
 
 function dim() {
@@ -95,13 +96,21 @@ const displayWalletBalances = async (tokenIns, bOwner, bAnother, bUser) => {
   }
 
   if(bUser){
-    let balance = await tokenIns.balanceOf(user.address);
+    let balance = await tokenIns.balanceOf(userWallet.address);
     console.log("user balance:",
                 ethers.utils.formatEther(balance.toString()));  
   }
 
 };
 
+const displayUserInfo = async(farmContract, wallet) => {
+  let info = await farmContract.userInfoOf(wallet.address);
+  cyan("-------------------------------------------");
+  console.log("balance of wallet:", ethers.utils.formatEther(info.balance));
+  console.log("rewards of wallet:", info.rewards.toString());
+  console.log("reward per token paid of wallet:", info.rewardPerTokenPaid.toString());
+  console.log("last updated time of wallet:", info.balance.toString());
+}
 
 async function main() {
 
@@ -118,36 +127,38 @@ async function main() {
 
     dim(`Network: ${chainName(chainId)}`);
 
-    if(chainId !== 97 && chainId !== 1337){
-        console.log(">>>>>>>>>>> unsupported blockchain >>>>>>>>>>>>>>");
-        return;
-    }
+    // if(chainId !== 97 && chainId !== 1337){
+    //     console.log(">>>>>>>>>>> unsupported blockchain >>>>>>>>>>>>>>");
+    //     return;
+    // }
 
     console.log("owner:", owner.address);
     console.log("user:", userWallet.address);
     console.log("another user:", anotherUser.address);
     console.log("chain id:", chainId);
 
+    const deployExchangeTool = true;
+
     const options = {
-      deploySmartComp: false,
+      deploySmartComp: true,
       upgradeSmartComp: false,
       
-      deployGoldenTreePool: false,
+      deployGoldenTreePool: true,
       upgradeGoldenTreePool: false,
 
-      deploySmartAchievement: false,
+      deploySmartAchievement: true,
       upgradeSmartAchievement: false,
 
-      deploySmartArmy: false,
+      deploySmartArmy: true,
       upgradeSmartArmy: false,
 
-      deploySmartFarm: false,
+      deploySmartFarm: true,
       upgradeSmartFarm: false,
 
-      deploySmartLadder: false,
+      deploySmartLadder: true,
       upgradeSmartLadder: false,
 
-      deploySMTBridge: false,
+      deploySMTBridge: true,
 
       deploySMTToken: true,
 
@@ -155,8 +166,39 @@ async function main() {
 
       testAddLiquidity: true,
       
-      testSwap: false,
+      testSwap: true,
 
+      testArmyLicense: true,
+
+      testFarm: true
+    }
+    ///////////////////////// Factory ///////////////////////////
+    let routerAddress = "0x45e9F9060b35e9f7143B430Bc7de78c69F5debDf";
+    let wEthAddress = "0x0b06c78bAaF770D4B7d14faaCa3F08aca8C3Fde2";
+    let factoryAddress = "0x2cBaA7F5A4Fda750060a01FCE3827ab2274075b3";
+    if(deployExchangeTool){
+      cyan(`\nDeploying Factory Contract...`);
+      const Factory = await ethers.getContractFactory("PancakeSwapFactory");
+      let exchangeFactory = await Factory.deploy(owner.address);
+      await exchangeFactory.deployed();
+      factoryAddress = exchangeFactory.address;
+      displayResult("\nMy Factory deployed at", exchangeFactory);
+      console.log(await exchangeFactory.INIT_CODE_PAIR_HASH());  
+
+      cyan(`\nDeploying WETH Contract...`);
+      const wETH = await ethers.getContractFactory("WETH");
+      let wEth = await wETH.deploy();
+      wEthAddress = wEth.address;
+      await wEth.deployed();
+
+      displayResult("\nMy WETH deployed at", wEth);
+
+      cyan(`\nDeploying Router Contract...`);
+      const Router = await ethers.getContractFactory("PancakeSwapRouter");
+      let exchangeRouter = await Router.deploy(exchangeFactory.address, wEth.address);
+      await exchangeRouter.deployed();
+      routerAddress = exchangeRouter.address;
+      displayResult("\nMy Router deployed at", exchangeRouter);
     }
 
     ///////////////////////// BUSD Token ///////////////////////////
@@ -176,17 +218,21 @@ async function main() {
     displayResult('SmartTokenCash contract', deployedSMTC);
     
     ///////////////////////// SmartComp ///////////////////////
-    let smartCompAddress = "0xBaa44Dd97E0b709C4E8faA95745a7321416cAf2D";
+    let smartCompAddress = "0x43517baB45e3921658a483350A51Ec68696ADAEb";
     const SmartComp = await ethers.getContractFactory('SmartComp');
     if(options.deploySmartComp) {
       cyan("Deploying SmartComp contract");
       SmartCompContract = await upgrades.deployProxy(
-        SmartComp, [],
+        SmartComp, 
+        [
+          routerAddress,
+          deployedBusd.address
+        ],
         { initializer: 'initialize', kind: 'uups' }
       );
       await SmartCompContract.deployed();
       smartCompAddress = SmartCompContract.address;
-      displayResult('SmartTokenCash contract', SmartCompContract);
+      displayResult('SmartComp contract', SmartCompContract);
     }
     if(options.upgradeSmartComp) {
       green("Upgrading SmartComp contract");
@@ -198,23 +244,36 @@ async function main() {
     }
 
     ///////////////////////// SMTBridge ///////////////////////
-    let smartCompInstance = await ethers.getContractAt("SmartComp", smartCompAddress);
-    let smtBridgeAddress = "0xCF6fB9dd95a486e587fF53194B06FE6082220A37";
+    let smartCompInstance = await ethers.getContractAt("SmartComp", smartCompAddress);    
+
+    let uniswapV2Factory = await smartCompInstance.getUniswapV2Factory();    
+    console.log("uniswapV2Factory:", uniswapV2Factory);
+
+    let uniswapV2Router = await smartCompInstance.getUniswapV2Router();
+    console.log("uniswapV2Router:", uniswapV2Router);
+
+    let smtBridgeAddress = "0x0dbd2Be772228ee092642943527b223688CF8463";
     if(options.deploySMTBridge) {
       let tx = await smartCompInstance.setBUSD(deployedBusd.address);
       await tx.wait();
+
       let wbnb = await smartCompInstance.getWBNB();
       let busd = await smartCompInstance.getBUSD();
-      let uniswapV2Factory = await smartCompInstance.getUniswapV2Factory();
       console.log("wbnb:", wbnb);
       console.log("busd:", busd);
+
+      let uniswapV2Factory = await smartCompInstance.getUniswapV2Factory();
       console.log("uniswapV2Factory:", uniswapV2Factory);
     
       cyan(`\nDeploying SMTBridge Contract...`);
       let deployedSMTBridge = await deploy('SMTBridge', {
         from: owner.address,
-        args: [wbnb, uniswapV2Factory],
-        skipIfAlreadyDeployed: true
+        args: [
+          wEthAddress, 
+          factoryAddress,
+          smartCompInstance.address
+        ],
+        skipIfAlreadyDeployed: false
       });
       displayResult('SMTBridge contract', deployedSMTBridge);
       smtBridgeAddress = deployedSMTBridge.address;
@@ -223,7 +282,7 @@ async function main() {
     }
 
     ///////////////////////// Golden Tree Pool //////////////////// 
-    let goldenTreePoolAddress = '0xDAC575ddcdD2Ff269EE5C30420C96028Ba7cB304';
+    let goldenTreePoolAddress = '0x7aC0B6742E67092B240223dcB319BC924820f83c';
     const GoldenTreePool = await ethers.getContractFactory('GoldenTreePool');
     if(options.deployGoldenTreePool) {
         cyan(`\nDeploying GoldenTreePool contract...`);
@@ -255,7 +314,7 @@ async function main() {
     }
 
     ///////////////// Smart Archievement ////////////////////
-    let smartAchievementAddress = '0x828987A77f7145494bD86780349B204F32DB494A';
+    let smartAchievementAddress = '0xc7785B3bDcfDaE26e2954CbFE31131229e7B37A8';
     const SmartAchievement = await ethers.getContractFactory('SmartAchievement');
 
     if(options.deploySmartAchievement) {
@@ -263,7 +322,7 @@ async function main() {
         const SmartAchievementContract = await upgrades.deployProxy(SmartAchievement, 
             [smartCompAddress, deployedSMTC.address],
             {initializer: 'initialize',kind: 'uups'}
-        );    
+        );
         await SmartAchievementContract.deployed();
         smartAchievementAddress = SmartAchievementContract.address;
         displayResult('SmartAchievement Contract Address:', SmartAchievementContract);
@@ -285,7 +344,7 @@ async function main() {
     }
 
     ///////////////// Smart Army //////////////////////
-    let smartArmyAddress = '0x86E07ab6b97ADcd7897D960B0c61DFE5CEaD2E76';
+    let smartArmyAddress = '0x7d01CC8E33aEB465fe75d17efDA36Eedb775Da56';
     const SmartArmy = await ethers.getContractFactory('SmartArmy');
 
     if(options.deploySmartArmy) {
@@ -314,7 +373,7 @@ async function main() {
     }
 
     ///////////////////// Smart Farm ////////////////////////
-    let smartFarmAddress = '0xb654476d77d59259fF1e7fF38B8c4d408639b844';
+    let smartFarmAddress = '0xf7b776b09e18aA8A72037a02F30dD54A762aD39c';
     const SmartFarm = await ethers.getContractFactory('SmartFarm');
     if(options.deploySmartFarm) {
         cyan(`\nDeploying SmartFarm contract...`);
@@ -331,6 +390,14 @@ async function main() {
         // setSmartFarm on Comptroller
         const updatingSmartFarmTx = await smartCompInstance.setSmartFarm(smartFarmAddress);
         await updatingSmartFarmTx.wait()
+
+        let tx = await SmartFarmContract.connect(owner).addDistributor(userWallet.address);
+        await tx.wait();
+        console.log("Added user to distributor's list");
+        tx = await SmartFarmContract.connect(owner).addDistributor(anotherUser.address);
+        await tx.wait();
+        console.log("Added another user to distributor's list");
+  
     }
     if(options.upgradeSmartFarm) {
         green(`\nUpgrading SmartFarm contract...`);
@@ -342,7 +409,7 @@ async function main() {
     }
 
     ///////////////////////// Smart Ladder ///////////////////////////
-    let smartLadderAddress = '0xB5D0D6855EE08eb07eC4Ca51061c93D644367a1e';
+    let smartLadderAddress = '0xFE0cd317354c0De94e797cB4FF3980312043b473';
     const SmartLadder = await ethers.getContractFactory('SmartLadder');
 
     if(options.deploySmartLadder) {
@@ -371,7 +438,7 @@ async function main() {
     }
 
     ////////////////////// Smart Token ////////////////////////
-    let stmcTokenAddress = "0x5EC16ad7079747245FF6D0344995D5793159a647";
+    let stmcTokenAddress = "0x24fb837C83434670CbD10601055D229e9Fc1Aef1";
     if(options.deploySMTToken) {
       let busd = await smartCompInstance.getBUSD();
       console.log("busd address: ", busd);
@@ -379,8 +446,6 @@ async function main() {
       let deployedSmtc = await deploy('SmartToken', {
         from: owner.address,
         args: [
-            await smartCompInstance.getUniswapV2Router(),
-            busd,
             smartLadderAddress,
             goldenTreePoolAddress,
             owner.address,
@@ -422,9 +487,6 @@ async function main() {
     } else {
       green(`\nSmart Token deployed at ${stmcTokenAddress}`);      
     }
-
-    const contractSmtBnbLP = "0x44E34B530992109c624684e6371fC23e4E1C2C94";
-    const contractSmtBusdLP = "0x1C19f2269E633DaA608D00AEfA449fe0E0DC44ee";
 
     let smartTokenInstance = await ethers.getContractAt("SmartToken", stmcTokenAddress);
     const busdAddr = await smartCompInstance.getBUSD();
@@ -485,65 +547,60 @@ async function main() {
       console.log("SMT-BNB LP token address: ", pairSmtcBnbAddr);
       let pairSmtcBusdAddr = await smartTokenInstance._uniswapV2BUSDPair();
       console.log("SMT-BUSD LP token address: ", pairSmtcBusdAddr);
-      let pairSmtcBnbIns = new ethers.Contract(pairSmtcBnbAddr, bep20ABI, owner);
-      let pairSmtcBusdIns = new ethers.Contract(pairSmtcBusdAddr, bep20ABI, owner);
+
+      let pairSmtcBnbIns = new ethers.Contract(pairSmtcBnbAddr, bep20ABI, userWallet);
+      let pairSmtcBusdIns = new ethers.Contract(pairSmtcBusdAddr, bep20ABI, userWallet);
 
       ///////////////////  SMT-BNB Add Liquidity /////////////////////
-      let tx = await smartTokenInstance.connect(anotherUser).approve(
+      let tx = await smartTokenInstance.connect(userWallet).approve(
         routerInstance.address,
         ethers.utils.parseUnits("10000",18)
       );
       await tx.wait();
 
-      tx = await routerInstance.connect(anotherUser).addLiquidityETH(
+      tx = await routerInstance.connect(userWallet).addLiquidityETH(
         stmcTokenAddress,
         ethers.utils.parseUnits("1000", 18),
         0,
         0,
-        anotherUser.address,
+        userWallet.address,
         "111111111111111111111",
-        {value : ethers.utils.parseUnits("0.05", 18)}
+        {value : ethers.utils.parseUnits("0.01", 18)}
       );
       await tx.wait();
       console.log("SMT-BNB add liquidity tx: ", tx.hash);
       
-      let balanceStmcBnb = await pairSmtcBnbIns.balanceOf(owner.address);
+      let balanceStmcBnb = await pairSmtcBnbIns.balanceOf(userWallet.address);
       console.log("SMT-BNB balance: ", ethers.utils.formatEther(balanceStmcBnb));
 
       ///////////////////  SMT-BUSD Add Liquidity /////////////////////
       await displayWalletBalances(smartTokenInstance, false, true, false);
       await displayWalletBalances(busdToken, false, true, false);
-		/* 	tx = await busdToken.connect(anotherUser).approve(
-				routerInstance.address,
-				ethers.utils.parseUnits("10000", 18)
-			);
-			await tx.wait(); */
 
-			tx = await smartTokenInstance.connect(anotherUser).approve(
+			tx = await smartTokenInstance.connect(userWallet).approve(
 				routerInstance.address,
 				ethers.utils.parseUnits("5000", 18)
 			);
 			await tx.wait();
 
-			tx = await busdToken.connect(anotherUser).approve(
-				routerInstance.address,
-        
+			tx = await busdToken.connect(userWallet).approve(
+				routerInstance.address,        
 				ethers.utils.parseUnits("5000", 18)
 			);
 			await tx.wait();
 
 
-      let balance = await smartTokenInstance.balanceOf(owner.address);
-      console.log("owner balance:", ethers.utils.formatEther(balance.toString()));
+      let balance = await smartTokenInstance.balanceOf(userWallet.address);
+      console.log("userWallet balance:", ethers.utils.formatEther(balance.toString()));
       
-			tx = await routerInstance.connect(anotherUser).addLiquidity(
+			tx = await routerInstance.connect(userWallet).addLiquidity(
 				stmcTokenAddress,
 				busdAddr,
 				ethers.utils.parseUnits("1000", 18),
 				ethers.utils.parseUnits("1000", 18),
 				0,
 				0,
-				anotherUser.address,
+				userWallet.address,
 				"111111111111111111111"
 			);
 			await tx.wait();
@@ -551,7 +608,7 @@ async function main() {
       await displayWalletBalances(smartTokenInstance, false, true, false);
       await displayWalletBalances(busdToken, false, true, false);
 
-      let balanceStmcBusd = await pairSmtcBusdIns.balanceOf(anotherUser.address);
+      let balanceStmcBusd = await pairSmtcBusdIns.balanceOf(userWallet.address);
       console.log("SMT-BUSD balance: ", ethers.utils.formatEther(balanceStmcBusd));    
     }
 
@@ -629,6 +686,106 @@ async function main() {
       console.log("SMT token balance: ", ethers.utils.formatEther(balance));    
       balance = await busdToken.balanceOf(owner.address);
       console.log("BUSD token balance: ", ethers.utils.formatEther(balance));
+    }
+
+    if(options.testArmyLicense) {
+      let smartArmyContract = await ethers.getContractAt("SmartArmy", smartArmyAddress);
+      cyan("============= Created Licenses =============");
+      let count = await smartArmyContract.countOfLicenses();
+      cyan(`total license count: ${count}`);
+      let defaultLics = await smartArmyContract.fetchAllLicenses();
+      for(let i=0; i<defaultLics.length; i++) {
+        console.log("************ index",i, " **************");
+        console.log("level:", defaultLics[i].level.toString());
+        console.log("name:", defaultLics[i].name.toString());
+        console.log("price:", ethers.utils.formatEther(defaultLics[i].price.toString()));
+        console.log("ladderLevel:", defaultLics[i].ladderLevel.toString());
+        console.log("duration:", defaultLics[i].duration.toString());
+      }
+      
+      cyan("============= Register Licenses =============");
+      let userBalance = await smartTokenInstance.balanceOf(userWallet.address);
+      userBalance = ethers.utils.formatEther(userBalance);
+      const license = await smartArmyContract.licenseTypeOf(1);
+      let price = ethers.utils.formatEther(license.price);
+      if(userBalance < price) {
+        console.log("charge SMT token to your wallet!!!!");
+        return;
+      }
+      tx = await smartArmyContract.connect(anotherUser).registerLicense(
+        1, userWallet.address, "Arsenii", "https://t.me.Ivan"
+      );
+      await tx.wait();
+      console.log("register transaction:", tx.hash);
+      
+      tx = await smartArmyContract.connect(anotherUser).activateLicense();
+      console.log("activateLicense: ", tx.hash);
+      
+      await displayWalletBalances(smartTokenInstance, false, false, true, false);
+      let userLic = await smartArmyContract.licenseOf(anotherUser.address);
+      console.log("----------- user license ---------------");
+      console.log("owner: ", userLic.owner);
+      console.log("level: ", userLic.level.toString());
+      console.log("start at: ", userLic.startAt.toString());
+      console.log("active at: ", userLic.activeAt.toString());
+      console.log("expire at: ", userLic.expireAt.toString());
+      console.log("lp locked: ", ethers.utils.formatEther(userLic.lpLocked.toString()));
+
+      userLic = await smartArmyContract.licenseOf(anotherUser.address);
+      let curBlockNumber = await ethers.provider.getBlockNumber();
+      const timestamp = (await ethers.provider.getBlock(curBlockNumber)).timestamp;
+      
+      if(userLic.expireAt > timestamp) {
+        console.log("Current License still active!!!");
+        return;
+      }
+
+      displayWalletBalances(smartTokenInstance, false, false, true, false);
+
+      tx = await smartArmyContract.connect(anotherUser).liquidateLicense();
+      await tx.wait();
+      console.log("liquidateLicense tx:", tx.hash);
+
+      displayWalletBalances(smartTokenInstance, false, false, true, false);
+    }
+
+    if(options.testFarm) {
+      cyan("--------------------------------------");
+      displayWalletBalances(smartTokenInstance, false, false, true, true);
+
+      tx = await smartTokenInstance.connect(anotherUser).transfer(
+        smartFarmContract.address, 
+        ethers.utils.parseUnits('1000',18)
+      );
+      await tx.wait();
+      console.log("anotherUser -> smart farm contract tx:", tx.hash);
+
+      tx = await smartFarmContract.connect(anotherUser).notifyRewardAmount(ethers.utils.parseUnits('1000',18));
+      await tx.wait();
+      console.log("notifyRewardAmount tx:", tx.hash);
+
+      let rewardRate = await smartFarmContract.rewardRate();
+      console.log("first reward rate: %s",rewardRate.toString());
+
+      displayWalletBalances(smartTokenInstance, false, false, true, true);
+
+
+      await displayWalletBalances(smartTokenInstance, true, true, true);
+
+      tx = await smartFarmContract.connect(anotherUser)
+                .stakeSMT(
+                  anotherUser.address, 
+                  ethers.utils.parseUnits('1000',18)
+                );
+      await tx.wait();
+      console.log("stake SMT tx:", tx.hash);
+
+      await displayWalletBalances(smartTokenInstance, false, false, true);
+
+      await displayUserInfo(smartFarmContract, userWallet);
+
+      rewardRate = await smartFarmContract.rewardRate();
+      console.log("current reward rate: %s",rewardRate.toString());
     }
 }
 

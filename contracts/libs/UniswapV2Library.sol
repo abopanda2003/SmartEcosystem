@@ -2,6 +2,7 @@
 pragma solidity 0.8.4;
 
 import '../interfaces/IUniswapPair.sol';
+import '../interfaces/IUniswapFactory.sol';
 import "./SafeMath.sol";
 
 library UniswapV2Library {

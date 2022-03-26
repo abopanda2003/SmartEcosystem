@@ -584,7 +584,6 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
             address to = i < path.length - 2 ? PancakeSwapLibrary.pairFor(factoryAddr, output, path[i + 2]) : _to;
             pair.swap(amount0Out, amount1Out, to, new bytes(0));
         }
-
     }
 
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
@@ -642,6 +641,7 @@ contract PancakeSwapRouter is IPancakeSwapRouter {
         ensure(deadline)
     {
         require(path[path.length - 1] == WETHAddr, 'PancakeSwapRouter: INVALID_PATH');
+
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, PancakeSwapLibrary.pairFor(factoryAddr, path[0], path[1]), amountIn
         );

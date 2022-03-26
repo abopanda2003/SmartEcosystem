@@ -106,27 +106,50 @@ async function main() {
     console.log("chain id:", chainId);
 
     cyan(`\nDeploying Adamant Token...`);
-    let deployedAdamant = await deploy('Adamant', {
+    let deployedBusd = await deploy('BEP20Token', {
       from: owner.address,
       skipIfAlreadyDeployed: true
     });
-    displayResult('Adamant Token Contract', deployedAdamant);
+    displayResult('Adamant Token Contract', deployedBusd);
 
-    cyan(`\nDeploying NFT Market...`);
-    let deployedMarket = await deploy('NFTMarket', {
+    cyan(`\nDeploying NiftyFlex...`);
+    let deployedNFT = await deploy('NiftyFlex', {
       from: owner.address,
-      skipIfAlreadyDeployed: true
-    });
-    displayResult('NFT Market Contract', deployedMarket);
-    
-    cyan(`\nDeploying NFT Contract...`);
-    let deployedNFT = await deploy('NFT', {
-      from: owner.address,
-      args:[deployedMarket.address],
       skipIfAlreadyDeployed: true
     });
     displayResult('NFT Contract', deployedNFT);
 
+    let busdContract = await ethers.getContractAt("BEP20Token", deployedBusd.address);    
+    
+    let balanceOwner = await busdContract.balanceOf(owner.address);
+
+    console.log("owner balance:", await ethers.utils.formatEther(balanceOwner));
+
+    let nftContract = await ethers.getContractAt("NiftyFlex", deployedNFT.address);    
+
+    let tx = await nftContract.addProduct(
+      "aaa",
+      ethers.utils.parseUnits("20", 18),
+      false,
+      userWallet.address
+    );
+
+    await tx.wait();
+
+    console.log("add product tx:", tx.hash);
+
+    tx = await busdContract.transfer(anotherUser, 100);
+    await tx.wait();
+    console.log("owner -> another user tx: ", tx.hash);
+
+    const currentId = await nftContract.getProductCount();
+    const info = await nftContract.getProductInfo(currentId);
+
+    tx = await busdContract.connect(anotherUser).approve(nftContract.address, info._price);
+    await tx.wait();
+
+    await nftContract.connect(anotherUser).buyProduct(busdContract.address, currentId);
+    await tx.wait();
 }
 
 // We recommend this pattern to be able to use async/await everywhere

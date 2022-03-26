@@ -18,16 +18,11 @@ interface ISmartComp {
     function getWBNB() external view returns(IERC20);
 
     function getUniswapV2Router() external view returns(IUniswapV2Router02);
-
     function getUniswapV2Factory() external view returns(address);
-
     function getSmartArmy() external view returns(ISmartArmy);
-
     function getSmartLadder() external view returns(ISmartLadder);
-
     function getSmartFarm() external view returns(ISmartFarm);
-
     function getGoldenTreePool() external view returns(IGoldenTreePool);
-
     function getSmartAchievement() external view returns(ISmartAchievement);
+    function getSmartBridge() external view returns(address);
 }

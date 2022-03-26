@@ -77,19 +77,14 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-
   /**
     * @notice Sets a new comptroller
     * @dev Admin function to set a new comptroller
     */
   function setComptroller(ISmartComp newComptroller) external onlyOwner {
-    // Ensure invoke comptroller.isComptroller() returns true
     require(newComptroller.isComptroller(), "marker method returned false");
-
-    // Set comptroller to newComptroller
     comptroller = newComptroller;
-  }
-  
+  }  
 
   /**
    * @dev Add rewards distributor
@@ -106,7 +101,6 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
   function removeDistributor(address _address) external onlyOwner {
     removeByValue(_address);
   }
-
 
   /**
    * @dev Set Enable or Disable swap and distribute
@@ -214,6 +208,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     override 
     onlyRewardsDistributor 
   {
+
     if(amount == 0) {
       return;
     }
@@ -243,10 +238,8 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
         if(i == 0) {
           growthBalances[ref] = growthBalances[ref] + shareAmount;
           emit Growth(shareAmount, ref);
-
         } else {
           uint256 ladderLevel = smartArmy.licenseLevelOf(ref);
-
           if(ladderLevel >= i) {
             growthBalances[ref] = growthBalances[ref] + shareAmount;
             emit ReferralGrowth(shareAmount, ref, account, i);
@@ -313,17 +306,17 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
       return false;
   }
 
-  function addValue(address value) public {
+  function addValue(address value) internal {
       _rewardsDistributors.push(value);
   }
 
-  function removeByValue(address value) public {
+  function removeByValue(address value) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       uint i = indexOf(value);
       removeByIndex(i);
   }
 
-  function removeByIndex(uint i) public {
+  function removeByIndex(uint i) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       while (i<_rewardsDistributors.length-1) {
           _rewardsDistributors[i] = _rewardsDistributors[i+1];

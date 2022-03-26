@@ -28,7 +28,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
 
   uint256 public constant LICENSE_EXPIRE = 12 * 30 * 24 * 3600; // 12 months
 
-  ISmartComp public comptroller;  
+  ISmartComp public comptroller;
   
   FeeInfo public feeInfo;
 
@@ -166,11 +166,12 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     string memory _name,
     uint256 _price,
     uint256 _ladderLevel,
+    string memory _tokenUri,
     bool _isValid
   ) 
     public 
     onlyOwner 
-  {
+  {    
     require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
 
     LicenseType storage _type = licenseTypes[_level];
@@ -207,7 +208,8 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     uint256 _level,
     address _sponsor,
     string memory _username,
-    string memory _telegram
+    string memory _telegram,
+    string memory _tokenUri
   ) external {
     require(licenseOf(msg.sender).status == LicenseStatus.None
       || licenseOf(msg.sender).status == LicenseStatus.Expired, "SmartArmy#startLicense: already started");
@@ -223,6 +225,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     license.startAt = block.timestamp;
     license.expireAt = block.timestamp + LICENSE_EXPIRE;
     license.lpLocked = 0;
+    license.tokenUri = _tokenUri;
     license.status  = LicenseStatus.Pending;
 
     userLicenses[_msgSender()] = newLicenseId;
@@ -249,7 +252,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    */
   function activateLicense() external {
     UserLicense storage license = licenses[userLicenses[msg.sender]];
-    // console.log("license id: %s", userLicenses[msg.sender]);
     require(license.status == LicenseStatus.Pending, "SmartArmy#activateLicense: not registered");
 
     LicenseType memory _type = licenseTypes[license.level];
@@ -258,8 +260,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     // Transfer SMT token for License type to this contract
     uint256 smtAmount = _type.price;
     uint amount = _tranferSmtToContract(_msgSender(), smtAmount);
-    console.log("--------------------------------->>>>");
-    
     uint256 liquidity = comptroller.getSmartFarm().stakeSMT(_msgSender(), amount);
     require(liquidity > 0, "SmartArmy#activateLicense: failed to add liquidity");
 
@@ -370,6 +370,18 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   }
 
   /**
+   * Get License ID of Account
+   */
+  function licenseIdOf(address account) 
+    public 
+    view
+    override
+    returns(uint256)
+  {
+      return userLicenses[account];
+  }
+
+  /**
    * Get License Type with level
    */
   function licenseTypeOf(uint256 level) 
@@ -458,7 +470,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     returns(bool)
   {
       UserLicense memory license = licenseOf(account);
-      return (license.status == LicenseStatus.Pending && block.timestamp > license.startAt + 12 * 3600) 
+      return (license.status == LicenseStatus.Pending && block.timestamp > license.startAt + 12 * 3600)
         || license.status == LicenseStatus.Active;
   }
 

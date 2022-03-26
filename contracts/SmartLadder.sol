@@ -100,6 +100,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   function updateAdminWallet(
     address _address
   ) external onlyOwner {
+    require(_address != address(0x0), "admin wallet can't be zero address");
     adminWallet = _address;
   }
 
@@ -117,7 +118,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   {
     require(msg.sender == address(comptroller.getSmartArmy()) || msg.sender == owner(), "SmartLadder#registerSponsor: only SmartArmy or owner");
     require(users[_user] == address(0x0), "SmartLadder#registerSponsor: already registered");
-    users[_user] = _sponsor;  
+    users[_user] = _sponsor;
   }
 
 
@@ -173,7 +174,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
     _activity.share = _share;
     
     emit ActivityUpdated(_id, _activity);
-  } 
+  }
 
   /**
    * Enable or Disable Activity
@@ -285,7 +286,6 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
     _distribute(4, account);
   }
 
-
   /**
    * Private rewards to referrals 
    */
@@ -310,7 +310,6 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
       // if activity is not valid or is stopped now, all token to admin wallet
       TransferHelper.safeTransferTokenOrETH(token, adminWallet, amount);
       emit AdminReferralReward(from, adminWallet, token, amount);
-
     } else {
       uint256 paid = 0;
       address ref = from;
@@ -321,13 +320,10 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
         if(percent > 0 && ref != address(0x0) && i < ladderLevel) {
           uint256 shareAmount = amount * percent / PERCENTS_DIVIDER;
           TransferHelper.safeTransferTokenOrETH(token, ref, shareAmount);
-
           paid += shareAmount;
-
           emit ReferralReward(from, ref, token, shareAmount, i+1);
-        } 
+        }
       }
-
       if(amount > paid) {
         uint256 remain = amount - paid;
         TransferHelper.safeTransferTokenOrETH(token, adminWallet, remain);

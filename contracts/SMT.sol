@@ -25,22 +25,26 @@ import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartAchievement.sol';
 import 'hardhat/console.sol';
 
-contract SmartToken is Context, IBEP20, Ownable {
+contract SMT is Context, IBEP20, Ownable {
     using SafeMath for uint256;
+
+    struct BuyingTokenInfo {
+        uint256 price;
+        uint256 decimal;
+    }
 
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
     uint8 private _decimals;
 
-    address public busdContract;
     address public _uniswapV2ETHPair;
     address public _uniswapV2BUSDPair;
-    IUniswapV2Router02 public _uniswapV2Router;
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     address public _operator; 
     address public _smartArmy;
+    ISmartComp comptroller;
     
     // tax addresses
     address public _referralAddress;
@@ -49,9 +53,11 @@ contract SmartToken is Context, IBEP20, Ownable {
     address public _achievementSystemAddress;
     address public _farmingRewardAddress;
     address public _intermediaryAddress;
+    address public _airdropAddress;
 
     // Buy Tax information
-    uint256 public _buyTaxFeeForUser = 15; // the % amount of buying amount when buying SMT token
+    uint256 public _buyIntermediaryTaxFee = 10;
+    uint256 public _buyNormalTaxFee = 15; // the % amount of buying amount when buying SMT token
 
     uint256 public _buyReferralFee = 50;
     uint256 public _buyGoldenPoolFee = 30;
@@ -59,7 +65,8 @@ contract SmartToken is Context, IBEP20, Ownable {
     uint256 public _buyAchievementFee = 10;
 
     // Sell Tax information
-    uint256 public _sellTaxFee = 15; // the % amount of selling amount when selling SMT token
+    uint256 public _sellIntermediaryTaxFee = 10;
+    uint256 public _sellNormalTaxFee = 15; // the % amount of selling amount when selling SMT token
 
     uint256 public _sellDevFee = 10;
     uint256 public _sellGoldenPoolFee = 30;
@@ -67,17 +74,21 @@ contract SmartToken is Context, IBEP20, Ownable {
     uint256 public _sellBurnFee = 30;
     uint256 public _sellAchievementFee = 10;
 
+    bool _isLockedDevTax;    
+    bool _isLockedGoldenTreeTax;
+    bool _isLockedFarmingTax;
+    bool _isLockedBurnTax;
+    bool _isLockedAchievementTax;
+    bool _isLockedReferralTax;
+
     // Transfer Tax information
-    uint256 public _transferTaxFee = 15; // the % amount of transfering amount when transfering SMT token
+    uint256 public _transferIntermediaryTaxFee = 10;
+    uint256 public _transferNormalTaxFee = 15; // the % amount of transfering amount when transfering SMT token
 
     uint256 public _transferDevFee = 10;
     uint256 public _transferAchievementFee = 10;
     uint256 public _transferGoldenFee = 50;
     uint256 public _transferFarmingFee = 30;
-
-    uint256[] public _sellTaxTierDays = [10, 10, 10, 10];
-    uint256[] public _sellTaxTiers    = [30, 25, 20, 15];
-    uint256 private _start_timestamp = block.timestamp;
 
     uint256 public constant MAX_TOTAL_SUPPLY = 15000000 * 1e18;
 
@@ -96,20 +107,22 @@ contract SmartToken is Context, IBEP20, Ownable {
     bool _farmingRewardsLocked;
     bool _surprizeRewardsLocked;
     bool _chestRewardsLocked;
-
+    bool _devRewardsLocked;
+    bool _airdropRewardsLocked;
+    
     uint256 public _tokenPriceByBusd = 15;
     uint256 public _busdDec = 10;
 
     uint256 public _tokenPriceByBNB = 25;
     uint256 public _bnbDec = 1000;
 
+    bool _isSwap = false;    
+
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
     mapping(address => bool) public _excludedFromFee;
-
-    ISmartComp comptroller;
-
-    bool _isSwap = false;
+    mapping(address => address) public _mapAssetToPair; // Asset --> SMT-Asset Pair
+    mapping(address => BuyingTokenInfo) public _mapBuyingToken;
 
     event TaxAddressesUpdated(
         address indexed referral, 
@@ -144,118 +157,105 @@ contract SmartToken is Context, IBEP20, Ownable {
         uint256 goldenPoolFee,
         uint256 farmingFee
     );
+    event UpdatedTaxes(
+        uint256 buyNormalTax,
+        uint256 sellNormalTax,
+        uint256 transferNormalTax,
+        uint256 buyIntermediaryTax,
+        uint256 sellIntermediaryTax,
+        uint256 transferIntermediaryTax
+    );
+    event UpdatedTaxLockStatus(
+        bool lockDevTax,
+        bool lockGoldenTreeTax,
+        bool lockFarmingTax,
+        bool lockBurnTax,
+        bool lockAchievementTax,
+        bool lockReferralTax
+    );
 
     event ResetedTimestamp(uint256 start_timestamp);
 
     event UpdatedGoldenTree(address indexed _address);
     event UpdatedSmartArmy(address indexed _address);
 
-    event UpdatedLiquidityLocked(bool _enable);
-    event UpdatedFarmingLocked(bool _enable);
-    event UpdatedSurprizeLocked(bool _enable);
-    event UpdatedChestLocked(bool _enable);
+    event UpdatedExchangeRouter(address indexed _router);
 
     event AddedWhitelist(uint256 lengthOfWhitelist);
     event UpdatedWhitelistAccount(address account, bool enable);
 
+    event CreatedPair(
+        address indexed tokenA,
+        address indexed tokenB
+    );
+
+    event CreatedBNBPair(address indexed _selfToken);
+
+    event UpdatedBuyingTokenInfo(
+        address _assetToken,
+        uint256 _price,
+        uint256 _decimal
+    );
+
+    event UpdatedBNBInfo(
+        uint256 _price,
+        uint256 _decimal
+    );
+
+    event TransferedOwnership(
+        address oldOwner, 
+        address newOwner
+    );
+
     modifier onlyOperator() {
         require(_operator == msg.sender || msg.sender == owner(), "SMT: caller is not the operator");
         _;
-    }
-    modifier liquidityLocked(uint256 amount) {
-        require(
-            _initialLiquidityLocked == false && _liquidityDist-amount > 0, 
-            "Locked the amount for initial SMT-BNB liquidity."
-        );
-        _;
-    }
-    modifier farmingRewardsLocked(uint256 amount) {
-        require(
-            _farmingRewardsLocked == false && _farmingRewardDist-amount > 0, 
-            "Locked the amount for farming rewards."
-        );
-        _;
-    }
-    modifier surprizeRewardsLocked(uint256 amount) {
-        require(
-            _surprizeRewardsLocked == false && _suprizeRewardsDist-amount > 0, 
-            "Locked the amount for surprize rewards."
-        );
-        _;
-    }
-    modifier chestRewardsLocked(uint256 amount) {
-        require(
-            _chestRewardsLocked == false && _chestRewardsDist-amount > 0, 
-            "Locked the amount for chest rewards."
-        );
-        _;
-    }
+    }    
     /**
      * @dev Sets the values for busdContract, {totalSupply} and tax addresses
      *
      */
     constructor(
-        address referral,
-        address goldenTree,
-        address dev,
-        address achievement, // passive global share
-        address farming,
-        address intermediary,
-        address smartArmy,
         address smartComp,
+        address dev,
         address airdrop
     ) {
         _name = "Smart Token";
         _symbol = "SMT";
         _decimals = 18;
 
-        require(
-            referral != address(0x0) 
-            && goldenTree != address(0x0) 
-            && dev != address(0x0) 
-            && achievement != address(0x0) 
-            && farming != address(0x0) 
-            && intermediary != address(0x0) 
-            && smartArmy != address(0x0)
-            && smartComp != address(0x0) 
-            && airdrop != address(0x0) , 
-            "invalid address"
-        );
-
-        _operator = msg.sender;
-        _referralAddress = referral;
-        _goldenTreePoolAddress = goldenTree;
-        _devAddress = dev;
-        _achievementSystemAddress = achievement;
-        _farmingRewardAddress = farming;
-        _intermediaryAddress = intermediary;
-
-        _smartArmy = smartArmy;
-
         comptroller = ISmartComp(smartComp);
-        busdContract = address(comptroller.getBUSD());
+        _referralAddress = address(comptroller.getSmartLadder());
+        _goldenTreePoolAddress = address(comptroller.getGoldenTreePool());
+        _achievementSystemAddress = address(comptroller.getSmartAchievement());
+        _farmingRewardAddress = address(comptroller.getSmartFarm());
+        _intermediaryAddress = comptroller.getSmartBridge();
+        _smartArmy = address(comptroller.getSmartArmy());
+        _devAddress = dev;
+        _airdropAddress = airdrop;
+        _operator = msg.sender;
 
-        // 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3 // bsctestnet
-        // Pancake V2 router
-        _uniswapV2Router = ISmartComp(smartComp).getUniswapV2Router();
+        _excludedFromFee[_referralAddress] = true;
+        _excludedFromFee[_goldenTreePoolAddress] = true;
+        _excludedFromFee[_achievementSystemAddress] = true;
+        _excludedFromFee[_farmingRewardAddress] = true;
+        _excludedFromFee[_intermediaryAddress] = true;
+        _excludedFromFee[_devAddress] = true;
+        _excludedFromFee[_airdropAddress] = true;
+        _excludedFromFee[smartComp] = true;
+        _excludedFromFee[_smartArmy] = true;
 
-        // Create a pair with ETH
+        _excludedFromFee[_operator] = true;
+        _excludedFromFee[address(this)] = true;
+
+        IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
+        IERC20 busdContract = comptroller.getBUSD();
+
         _uniswapV2ETHPair = IUniswapV2Factory(_uniswapV2Router.factory())
             .createPair(address(this), _uniswapV2Router.WETH());
 
-        // Create a pair with BUSD
         _uniswapV2BUSDPair = IUniswapV2Factory(_uniswapV2Router.factory())
-            .createPair(address(this), busdContract);
-
-        _excludedFromFee[msg.sender] = true;
-        _excludedFromFee[address(this)] = true;
-        _excludedFromFee[BURN_ADDRESS] = true;
-        _excludedFromFee[_referralAddress] = true;
-        _excludedFromFee[_goldenTreePoolAddress] = true;
-        _excludedFromFee[_devAddress] = true;
-        _excludedFromFee[_achievementSystemAddress] = true;
-        _excludedFromFee[_farmingRewardAddress] = true;
-        _excludedFromFee[_smartArmy] = true;
+            .createPair(address(this), address(busdContract));
 
         _liquidityDist = MAX_TOTAL_SUPPLY.div(10);
         _farmingRewardDist = MAX_TOTAL_SUPPLY.div(1000).mul(383);
@@ -265,8 +265,35 @@ contract SmartToken is Context, IBEP20, Ownable {
         _chestRewardsDist = MAX_TOTAL_SUPPLY.div(1000).mul(121);
         _devDist = MAX_TOTAL_SUPPLY.div(1000);
 
-        _mint(airdrop, _airdropDist);
-        _mint(dev, _devDist);
+        // mint initial liquidity to owner wallet.
+        _balances[_operator] = _balances[_operator].add(_liquidityDist);
+        _totalSupply = _totalSupply.add(_liquidityDist);
+        emit Transfer(address(0), _operator, _liquidityDist);
+
+        // mint some tokens to dev wallet.
+        _balances[_devAddress] = _balances[_devAddress].add(_devDist);
+        _totalSupply = _totalSupply.add(_devDist);
+        emit Transfer(address(0), _devAddress, _devDist);
+
+        // mint some tokens to airdrop wallet.
+        _balances[_airdropAddress] = _balances[_airdropAddress].add(_airdropDist);
+        _totalSupply = _totalSupply.add(_airdropDist);
+        emit Transfer(address(0), _airdropAddress, _airdropDist);
+
+        // mint tokens for farming reward to farming contract.
+        _balances[_farmingRewardAddress] = _balances[_farmingRewardAddress].add(_farmingRewardDist);
+        _totalSupply = _totalSupply.add(_farmingRewardDist);
+        emit Transfer(address(0), _farmingRewardAddress, _farmingRewardDist);
+
+        // mint chest rewards to achievement contract.
+        _balances[_operator] = _balances[_operator].add(_chestRewardsDist);
+        _totalSupply = _totalSupply.add(_chestRewardsDist);
+        emit Transfer(address(0), _operator, _chestRewardsDist);
+        
+        // mint surprize rewards to achievement contract.
+        _balances[_operator] = _balances[_operator].add(_suprizeRewardsDist);
+        _totalSupply = _totalSupply.add(_suprizeRewardsDist);
+        emit Transfer(address(0), _operator, _suprizeRewardsDist);
     }
 
     function getOwner() external override view returns (address) {
@@ -275,10 +302,6 @@ contract SmartToken is Context, IBEP20, Ownable {
 
     function getETHPair() external view returns (address) {
         return _uniswapV2ETHPair;
-    }
-
-    function getBUSDPair() external view returns (address) {
-        return _uniswapV2BUSDPair;
     }
 
     function name() external override view returns (string memory) {
@@ -321,13 +344,12 @@ contract SmartToken is Context, IBEP20, Ownable {
         uint256 amount
     ) public virtual override returns (bool) {
         _transferFrom(sender, recipient, amount);
-        if(recipient != _msgSender() && sender != _msgSender()){
-            _approve(
-                sender,
-                _msgSender(),
-                _allowances[sender][_msgSender()].sub(amount, 'SMT: transfer amount exceeds allowance')
-            );
-        }
+        if(_msgSender()!=recipient || !_excludedFromFee[recipient])
+        _approve(
+            sender,
+            _msgSender(),
+            _allowances[sender][_msgSender()].sub(amount, 'SMT: transfer amount exceeds allowance')
+        );        
         return true;
     }
 
@@ -350,62 +372,54 @@ contract SmartToken is Context, IBEP20, Ownable {
         require(recipient != address(0), 'SMT: transfer to the zero address');
         require(_balances[sender] >= amount, "SMT: balance of sender is too small.");
 
-        // _transfer(sender, recipient, amount);
         if (_isSwap || _excludedFromFee[sender] || _excludedFromFee[recipient]) {
-            // console.log("<<<<<<<<< main transfer <<<<<<<<<<");
             _transfer(sender, recipient, amount);
         } else {
             bool toPair = recipient == _uniswapV2ETHPair || recipient == _uniswapV2BUSDPair;
             bool fromPair = sender == _uniswapV2ETHPair || sender == _uniswapV2BUSDPair;
             if(sender == _intermediaryAddress && toPair) {
                 // Intermediary => Pair: No Fee
-                // console.log("<<<<<<<<< intermediary sell transfer <<<<<<<<<<");
-                uint256 taxAmount = amount.mul(10).div(100);
-                uint256 recvAmount = amount.sub(taxAmount);                
+                uint256 taxAmount = amount.mul(_sellIntermediaryTaxFee).div(100);
+                uint256 recvAmount = amount.sub(taxAmount);    
                 distributeSellTax(sender, taxAmount);
                 _transfer(sender, recipient, recvAmount);
             } else if(fromPair && recipient == _intermediaryAddress) {
                 // Pair => Intermediary: No Fee
-                // console.log("<<<<<<<<< intermediary buy transfer <<<<<<<<<<");
-                uint256 taxAmount = amount.mul(10).div(100);
+                uint256 taxAmount = amount.mul(_buyIntermediaryTaxFee).div(100);
                 uint256 recvAmount = amount.sub(taxAmount);                
                 distributeBuyTax(sender, recipient, taxAmount);
                 _transfer(sender, recipient, recvAmount);
             } else if(sender == _intermediaryAddress || recipient == _intermediaryAddress) {
-                // console.log("<<<<<<<<< intermediary normal transfer <<<<<<<<<<");
                 if (recipient == _intermediaryAddress) {
                     require(enabledIntermediary(sender), "SMT: no smart army account");
                     // sell transfer via intermediary: sell tax reduce 30%
-                    uint256 taxAmount = _getCurrentSellTax().mul(700).div(1000).div(100);
+                    uint256 taxAmount = amount.mul(_transferIntermediaryTaxFee.mul(700).div(1000)).div(100);
                     uint256 recvAmount = amount.sub(taxAmount);
                     distributeSellTax(sender, taxAmount);
                     _transfer(sender, recipient, recvAmount);
                 } else {
                     require(enabledIntermediary(recipient), "SMT: no smart army account");
                     // buy transfer via intermediary: buy tax reduce 30%
-                    uint256 taxAmount = amount.mul(_buyTaxFeeForUser.mul(700).div(1000)).div(100);
+                    uint256 taxAmount = amount.mul(_transferIntermediaryTaxFee.mul(700).div(1000)).div(100);
                     uint256 recvAmount = amount.sub(taxAmount);                    
                     distributeBuyTax(sender, recipient, taxAmount);
                     _transfer(sender, recipient, recvAmount);
                 }
-            } else if (fromPair) {
+            } else if(fromPair) {
                 // buy transfer
-                // console.log("<<<<<<<<< buy transfer <<<<<<<<<<");
-                uint256 taxAmount = amount.mul(15).div(100);
+                uint256 taxAmount = amount.mul(_buyNormalTaxFee).div(100);
                 uint256 recvAmount = amount.sub(taxAmount);
                 distributeBuyTax(sender, recipient, taxAmount);
                 _transfer(sender, recipient, recvAmount);
-            } else if (toPair) {
+            } else if(toPair) {
                 // sell transfer 
-                // console.log("<<<<<<<<< sell transfer <<<<<<<<<<");
-                uint256 taxAmount = amount.mul(15).div(100);
+                uint256 taxAmount = amount.mul(_sellNormalTaxFee).div(100);
                 uint256 recvAmount = amount.sub(taxAmount);
                 distributeSellTax(sender, taxAmount);
                 _transfer(sender, recipient, recvAmount);
             } else {
                 // normal transfer
-                // console.log("<<<<<<<<< normal transfer <<<<<<<<<<");
-                uint256 taxAmount = amount.mul(15).div(100);
+                uint256 taxAmount = amount.mul(_transferNormalTaxFee).div(100);
                 uint256 recvAmount = amount.sub(taxAmount);  
                 distributeTransferTax(sender, taxAmount);
                 _transfer(sender, recipient, recvAmount);
@@ -421,112 +435,112 @@ contract SmartToken is Context, IBEP20, Ownable {
     }
 
     function _transferToGoldenTreePool(address _sender, uint256 amount) internal {
-        IERC20 busd = comptroller.getBUSD();
         _transfer(_sender, address(this), amount);
-        _swapTokenForBUSD(amount);
-        uint256 _amount = busd.balanceOf(address(this));
-        if(_amount > 0)
-            busd.transfer(_goldenTreePoolAddress, _amount);
+        _swapTokenForBUSD(_goldenTreePoolAddress, amount);
     }
 
     function _transferToAchievement(address _sender, uint256 amount) internal {        
         _transfer(_sender, address(this), amount);
-        _swapTokenForBNB(amount);
-        uint256 _amount = payable(address(this)).balance;
-        if(_amount > 0) {
-            payable(_achievementSystemAddress).send(_amount);
-        }
+        _swapTokenForBNB(_achievementSystemAddress, amount);
     }
 
     function distributeSellTax (
         address sender,
         uint256 amount
     ) internal {
-
-        uint256 devAmount = amount.mul(_sellDevFee).div(100);
-        uint256 goldenTreeAmount = amount.mul(_sellGoldenPoolFee).div(100);
-        uint256 farmingAmount = amount.mul(_sellFarmingFee).div(100);
-        uint256 burnAmount = amount.mul(_sellBurnFee).div(100);
-        uint256 achievementAmount = amount.mul(_sellAchievementFee).div(100);
-
-        _transfer(sender, _devAddress, devAmount);
-        _transfer(sender, _farmingRewardAddress, farmingAmount);
-        _transfer(sender, BURN_ADDRESS, burnAmount);
-        // _transferToGoldenTreePool(sender, goldenTreeAmount);
-        // _transferToAchievement(sender, achievementAmount);
-
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-
-        // distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
-
-        // if(farmingAmount > 0) {
-        //     distributeSellTaxToFarming(farmingAmount);
-        // }
+        if(!_isLockedDevTax) {
+            uint256 devAmount = amount.mul(_sellDevFee).div(100);
+            _transfer(sender, _devAddress, devAmount);
+        }
+        if(!_isLockedGoldenTreeTax) {
+            uint256 goldenTreeAmount = amount.mul(_sellGoldenPoolFee).div(100);
+            _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
+            distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
+        }
+        if(!_isLockedFarmingTax) {
+            uint256 farmingAmount = amount.mul(_sellFarmingFee).div(100);
+            _transfer(sender, _farmingRewardAddress, farmingAmount);
+            distributeSellTaxToFarming(farmingAmount);
+        }
+        if(!_isLockedBurnTax) {
+            uint256 burnAmount = amount.mul(_sellBurnFee).div(100);
+            _transfer(sender, BURN_ADDRESS, burnAmount);
+        }
+        if(!_isLockedAchievementTax) {
+            uint256 achievementAmount = amount.mul(_sellAchievementFee).div(100);
+            _transfer(sender, _achievementSystemAddress, achievementAmount);
+        }
     }
 
     /**
      * @dev Distributes buy tax tokens to tax addresses
     */
-
     function distributeBuyTax(
         address sender,
         address recipient,
         uint256 amount
     ) internal {
-
-        uint256 referralAmount = amount.mul(_buyReferralFee).div(100);
-        uint256 goldenTreeAmount = amount.mul(_buyGoldenPoolFee).div(100);
-        uint256 devAmount = amount.mul(_buyDevFee).div(100);
-        uint256 achievementAmount = amount.mul(_buyAchievementFee).div(100);
-
-        _transfer(sender, _devAddress, devAmount);
-        _transfer(sender, _referralAddress, referralAmount);
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-
-        // _transferToGoldenTreePool(sender, goldenTreeAmount);
-        // _transferToAchievement(sender, achievementAmount);
-
-        // distributeBuyTaxToLadder(recipient);
-        // distributeTaxToGoldenTreePool(recipient, goldenTreeAmount);
+        if(!_isLockedReferralTax) {
+            uint256 referralAmount = amount.mul(_buyReferralFee).div(100);
+            _transfer(sender, _referralAddress, referralAmount);
+            distributeBuyTaxToLadder(recipient);
+        }
+        if(!_isLockedGoldenTreeTax) {
+            uint256 goldenTreeAmount = amount.mul(_buyGoldenPoolFee).div(100);
+            _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
+            distributeTaxToGoldenTreePool(recipient, goldenTreeAmount);
+        }
+        if(!_isLockedDevTax) {
+            uint256 devAmount = amount.mul(_buyDevFee).div(100);
+            _transfer(sender, _devAddress, devAmount);
+        }
+        if(!_isLockedAchievementTax) {
+            uint256 achievementAmount = amount.mul(_buyAchievementFee).div(100);
+            _transfer(sender, _achievementSystemAddress, achievementAmount);
+        }
     }
 
     /**
      * @dev Distributes transfer tax tokens to tax addresses
      */
-
     function distributeTransferTax(
         address sender,
         uint256 amount
     ) internal {
-        uint256 devAmount = amount.mul(_transferDevFee).div(100);
-        uint256 farmingAmount = amount.mul(_transferFarmingFee).div(100);
-        uint256 goldenTreeAmount = amount.mul(_transferGoldenFee).div(100);
-        uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
 
-        _transfer(sender, _devAddress, devAmount);
-        _transfer(sender, _farmingRewardAddress, farmingAmount);
-        _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
-        _transfer(sender, _achievementSystemAddress, achievementAmount);
-
-        // _transferToGoldenTreePool(sender, goldenTreeAmount);
-        // _transferToAchievement(sender, achievementAmount);
-
-        // distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
-    } 
+        if(!_isLockedGoldenTreeTax) {
+            uint256 goldenTreeAmount = amount.mul(_transferGoldenFee).div(100);
+            _transfer(sender, _goldenTreePoolAddress, goldenTreeAmount);
+            distributeTaxToGoldenTreePool(sender, goldenTreeAmount);
+        }
+        if(!_isLockedDevTax) {
+            uint256 devAmount = amount.mul(_transferDevFee).div(100);
+            _transfer(sender, _devAddress, devAmount);
+        }
+        if(!_isLockedFarmingTax) {
+            uint256 farmingAmount = amount.mul(_transferFarmingFee).div(100);
+            _transfer(sender, _farmingRewardAddress, farmingAmount);
+            distributeSellTaxToFarming(farmingAmount);
+        }
+        if(!_isLockedAchievementTax) {
+            uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
+            _transfer(sender, _achievementSystemAddress, achievementAmount);
+        }
+    }
 
     /**
      * @dev Distributes buy tax tokens to smart ladder system
      */
     function distributeBuyTaxToLadder (address from) internal {
+        require(_referralAddress != address(0x0), "SmartLadder can't be zero address");
         ISmartLadder(_referralAddress).distributeBuyTax(from);
-    } 
+    }
 
     /**
      * @dev Distributes sell tax tokens to farmming passive rewards pool
      */
     function distributeSellTaxToFarming (uint256 amount) internal {
+        require(_farmingRewardAddress != address(0x0), "SmartFarm can't be zero address");
         ISmartFarm(_farmingRewardAddress).notifyRewardAmount(amount);
     } 
 
@@ -534,59 +548,8 @@ contract SmartToken is Context, IBEP20, Ownable {
      * @dev Distribute tax to golden Tree pool as SMT and notify
      */
     function distributeTaxToGoldenTreePool (address account, uint256 amount) internal {
+        require(_goldenTreePoolAddress != address(0x0), "GoldenTreePool can't be zero address");
         IGoldenTreePool(_goldenTreePoolAddress).notifyReward(amount, account);
-    }
-
-    function _mint(address account, uint256 amount) private {
-        require(account != address(0), 'SMT: mint to the zero address');
-        require(_totalSupply + amount <= MAX_TOTAL_SUPPLY, "exceeds maximum total supply");
-        _totalSupply = _totalSupply.add(amount);
-        _balances[account] = _balances[account].add(amount);
-        emit Transfer(address(0), account, amount);
-    }
-
-    function _mintForLiquidity(address account, uint256 amount) 
-        external onlyOperator liquidityLocked(amount)
-    {
-        _mint(account, amount);
-        _liquidityDist = _liquidityDist.sub(amount);
-    }
-
-    function _mintForFarmingPool(address account, uint256 amount)
-        external onlyOperator farmingRewardsLocked(amount)
-    {
-        _mint(account, amount);
-        _farmingRewardDist = _farmingRewardDist.sub(amount);
-    }
-
-    function _mintForPresale(address account, uint256 amount)
-        internal
-    {
-        require(_presaleDist.sub(amount) >= 0, "the amount to be minted exceeds maximum presale amount");
-        _mint(account, amount);
-        _presaleDist = _presaleDist.sub(amount);
-    }
-
-    function _mintForAirdrop(address account, uint256 amount)
-        external onlyOperator
-    {
-        require(_presaleDist.sub(amount) >= 0, "the amount to be minted exceeds maximum presale amount");
-        _mint(account, amount);
-        _airdropDist = _airdropDist.sub(amount);
-    }
-
-    function _mintForSurprizeReward(address account, uint256 amount)
-        external onlyOperator surprizeRewardsLocked(amount)
-    {
-        _mint(account, amount);
-        _suprizeRewardsDist = _suprizeRewardsDist.sub(amount);
-    }
-
-    function _mintForChestReward(address account, uint256 amount)
-        external onlyOperator chestRewardsLocked(amount)
-    {
-        _mint(account, amount);
-        _chestRewardsDist = _chestRewardsDist.sub(amount);
     }
 
     function _approve(address owner, address spender, uint256 amount) internal {
@@ -600,123 +563,150 @@ contract SmartToken is Context, IBEP20, Ownable {
     /**
      * @dev Returns the address is excluded from burn fee or not.
      */
-    function isExcludedFromFee (address account) external view returns (bool) {
+    function isExcludedFromFee(address account) external view returns (bool) {
         return _excludedFromFee[account];
     }
 
     /**
      * @dev Exclude the address from fee.
      */
-    function excludeFromFee (address account, bool excluded) external onlyOperator {
+    function excludeFromFee(address account, bool excluded) external onlyOperator {
         require(_excludedFromFee[account] != excluded, "SMT: already excluded or included");
         _excludedFromFee[account] = excluded;
 
         emit ExcludeFromFee(account, excluded);
-    }    
+    }
+
+    function getPair(address _assetToken) public view returns(address) {
+        return _mapAssetToPair[_assetToken];
+    }
+
+    function transferOwnership(address account) public override onlyOperator {
+        require(account != address(0x0), "owner account can't be zero address");
+        address oldOwner = _operator;
+        _operator = account;
+        emit TransferedOwnership(oldOwner, account);
+    }
 
     /**
-     * @dev Sets value for _sellTaxFee with {sellTaxFee} in emergency status.
+     * @dev Sets value for _sellNormalTaxFee with {sellTaxFee} in emergency status.
      */
-    function setSellFee (uint256 sellTaxFee) external onlyOperator {
+    function setSellFee(uint256 sellTaxFee) external onlyOperator {
         require(sellTaxFee < 100, 'SMT: sellTaxFee exceeds maximum value');
-        _sellTaxFee = sellTaxFee;
-
+        _sellNormalTaxFee = sellTaxFee;
         emit UpdatedSellFee(sellTaxFee);
-    }    
+    }
 
     /**
-     * @dev Sets value for _buyTaxFeeForUser with {buyTaxFee} in emergency status.
+     * @dev Sets value for _buyNormalTaxFee with {buyTaxFee} in emergency status.
      */
     function setBuyFee(uint256 buyTaxFee) external onlyOperator {
         require(buyTaxFee < 100, 'SMT: buyTaxFee exceeds maximum value');
-        _buyTaxFeeForUser = buyTaxFee;
-
+        _buyNormalTaxFee = buyTaxFee;
         emit UpdatedBuyFee(buyTaxFee);
     }    
 
     /**
-     * @dev Sets value for _transferTaxFee with {transferTaxFee} in emergency status.
+     * @dev Sets value for _transferNormalTaxFee with {transferTaxFee} in emergency status.
      */
     function setTransferFee (uint256 transferTaxFee) external onlyOperator {
         require(transferTaxFee < 100, 'SMT: transferTaxFee exceeds maximum value');
-        _transferTaxFee = transferTaxFee;
-
+        _transferNormalTaxFee = transferTaxFee;
         emit UpdatedTransferFee(transferTaxFee);
     }  
 
-    function getEventFees() external view returns(
-        uint256 buyFee, 
-        uint256 sellFee, 
-        uint256 transferFee
-    ){
-        return (_buyTaxFeeForUser, _sellTaxFee, _transferTaxFee);
+    /**
+     *  @dev reset new router. 
+    */
+    function setSmartComp(
+        address _smartComp
+    ) public onlyOperator {
+        require(address(_smartComp) != address(0x0), "Smart Comp address can't be zero address");
+        comptroller = ISmartComp(_smartComp);
     }
 
-    function getBuyTaxFees() external view returns(
-        uint256 referralFee, 
-        uint256 goldenPoolFee, 
-        uint256 devFee,
-        uint256 achievementFee
-    ){
-        return (
-            _buyReferralFee, 
-            _buyGoldenPoolFee, 
-            _buyDevFee, 
-            _buyAchievementFee
-        );
+    /**
+     *  @dev reset new liquidity pool based on router. 
+    */
+    function createBNBPair() public onlyOperator {
+        require(address(comptroller) != address(0x0), "SmartComp address can't be zero address");        
+        IUniswapV2Router02 router = comptroller.getUniswapV2Router();
+        _uniswapV2ETHPair = IUniswapV2Factory(router.factory())
+            .createPair(address(this), router.WETH());
+        emit CreatedBNBPair(address(this));
+    }    
+
+    function createBUSDPair(address _busdToken) public onlyOperator {
+        createPair(_busdToken);
+        _uniswapV2BUSDPair = getPair(_busdToken);
     }
 
-    function getSellTaxFees() external view returns(
-        uint256 devFee, 
-        uint256 goldenPoolFee, 
-        uint256 farmingFee,
-        uint256 burnFee,
-        uint256 achievementFee
-    ){
-        return (
-            _sellDevFee, 
-            _sellGoldenPoolFee, 
-            _sellFarmingFee, 
-            _sellBurnFee, 
-            _sellAchievementFee
-        );
+    /**
+     *  @dev reset new liquidity pool based on router. 
+    */
+    function createPair(address _assetToken) public onlyOperator {
+        require(address(comptroller) != address(0x0), "SmartComp can't be zero address");
+        require(address(_assetToken) != address(0x0), "Asset token address can't be zero address");
+
+        IUniswapV2Router02 router = comptroller.getUniswapV2Router();
+        address pairAsset = IUniswapV2Factory(router.factory()).createPair(address(this), _assetToken);
+        _mapAssetToPair[_assetToken] = pairAsset;
+        emit CreatedPair(address(this), _assetToken);
     }
 
-    function getTransferTaxFees() external view returns(
-        uint256 devFee, 
-        uint256 achievementFee,
-        uint256 goldenPoolFee, 
-        uint256 farmingFee
-    ){
-        return (
-            _transferDevFee,
-            _transferAchievementFee,
-            _transferGoldenFee,
-            _transferFarmingFee
+    /**
+     *  @dev Sets tax fees
+    */
+    function setTaxLockStatus(
+        bool lockDevTax,
+        bool lockGoldenTreeTax,
+        bool lockFarmingTax,
+        bool lockBurnTax,
+        bool lockAchievementTax,
+        bool lockReferralTax
+    ) external onlyOperator {
+        _isLockedDevTax = lockDevTax;
+        _isLockedGoldenTreeTax = lockGoldenTreeTax;
+        _isLockedFarmingTax = lockFarmingTax;
+        _isLockedBurnTax = lockBurnTax;
+        _isLockedAchievementTax = lockAchievementTax;
+        _isLockedReferralTax = lockReferralTax;
+        emit UpdatedTaxLockStatus(
+            lockDevTax,
+            lockGoldenTreeTax,
+            lockFarmingTax,
+            lockBurnTax,
+            lockAchievementTax,
+            lockReferralTax
         );
     }
 
     /**
-     * @dev start Sell Tax tier system again 
-     */
-    function resetStartTimestamp() external onlyOperator {
-        _start_timestamp = block.timestamp;
-
-        emit ResetedTimestamp(_start_timestamp);
-    }   
-
-    /**
-     * @dev get current sellTax percent through sell tax tier system
-     */
-    function _getCurrentSellTax() public view returns (uint256) {
-        uint256 time_since_start = block.timestamp - _start_timestamp;
-        for(uint i = 0; i < _sellTaxTierDays.length; i++) {
-            if(time_since_start < _sellTaxTierDays[i] * 24 * 3600) {
-                return _sellTaxTiers[i];
-            }
-        }
-        return _sellTaxFee;
-    }   
+     *  @dev Sets tax fees
+    */
+    function setTaxFees(
+        uint256 buyNormalTax,
+        uint256 sellNormalTax,
+        uint256 transferNormalTax,
+        uint256 buyIntermediaryTax,
+        uint256 sellIntermediaryTax,
+        uint256 transferIntermediaryTax
+    ) external onlyOperator {
+        _buyNormalTaxFee = buyNormalTax;
+        _sellNormalTaxFee = sellNormalTax;
+        _transferNormalTaxFee = transferNormalTax;
+        _buyIntermediaryTaxFee = buyIntermediaryTax;
+        _sellIntermediaryTaxFee = sellIntermediaryTax;
+        _transferIntermediaryTaxFee = transferIntermediaryTax;
+        emit UpdatedTaxes(
+            buyNormalTax,
+            sellNormalTax,
+            transferNormalTax,
+            buyIntermediaryTax,
+            sellIntermediaryTax,
+            transferIntermediaryTax
+        );
+    }
 
     /**
      *  @dev Sets buying tax fees
@@ -731,7 +721,12 @@ contract SmartToken is Context, IBEP20, Ownable {
         _buyGoldenPoolFee = goldenPoolFee;
         _buyDevFee = devFee;
         _buyAchievementFee = achievementFee;
-        emit UpdatedBuyTaxFees(referralFee, goldenPoolFee, devFee, achievementFee);
+        emit UpdatedBuyTaxFees(
+            referralFee, 
+            goldenPoolFee, 
+            devFee, 
+            achievementFee
+        );
     }
 
     /**
@@ -749,7 +744,13 @@ contract SmartToken is Context, IBEP20, Ownable {
         _sellFarmingFee = farmingFee;
         _sellBurnFee = burnFee;
         _sellAchievementFee = achievementFee;
-        emit UpdatedSellTaxFees(devFee, goldenPoolFee, farmingFee, burnFee, achievementFee);
+        emit UpdatedSellTaxFees(
+            devFee, 
+            goldenPoolFee, 
+            farmingFee, 
+            burnFee, 
+            achievementFee
+        );
     }
 
     /**
@@ -765,19 +766,25 @@ contract SmartToken is Context, IBEP20, Ownable {
         _transferAchievementFee = achievementFee;
         _transferGoldenFee = goldenPoolFee;
         _transferFarmingFee = farmingFee;
-        emit UpdatedTransferTaxFees(devFee, achievementFee, goldenPoolFee, farmingFee);
+        emit UpdatedTransferTaxFees(
+            devFee, 
+            achievementFee, 
+            goldenPoolFee, 
+            farmingFee
+        );
     }
 
     /**
      *  @dev Sets values for tax addresses 
      */
-    function setTaxAddresses (
+    function setTaxAddresses(
         address referral, 
         address goldenTree, 
-        address dev, 
         address achievement, 
         address farming, 
-        address intermediary
+        address intermediary,
+        address dev, 
+        address airdrop
     ) external onlyOperator {
 
         if (_referralAddress != referral && referral != address(0x0)) {
@@ -805,6 +812,11 @@ contract SmartToken is Context, IBEP20, Ownable {
             _farmingRewardAddress = farming;
             _excludedFromFee[farming] = true;
         }
+        if (_airdropAddress != airdrop && airdrop != address(0x0)) {
+            _excludedFromFee[_airdropAddress] = false;
+            _airdropAddress = airdrop;
+            _excludedFromFee[airdrop] = true;
+        }
         if (_intermediaryAddress != intermediary && intermediary != address(0x0)) {
             _intermediaryAddress = intermediary;
         }
@@ -824,126 +836,21 @@ contract SmartToken is Context, IBEP20, Ownable {
     /**
      * @dev Sets value for _smartArmy
      */
-    function setSmartArmyAddress (address _address) external onlyOperator {
+    function setSmartArmyAddress(address _address) external onlyOperator {
         require(_address!= address(0x0), 'SMT: not allowed zero address');
         _smartArmy = _address;
 
         emit UpdatedSmartArmy(_address);
     }
     
-    function setInitialLiquidity(bool lockStatus) external onlyOperator {
-        _initialLiquidityLocked = lockStatus;
-        emit UpdatedLiquidityLocked(lockStatus);
-    }
-
-    function setFarmingRewards(bool lockStatus) external onlyOperator {
-        _farmingRewardsLocked = lockStatus;
-        emit UpdatedFarmingLocked(lockStatus);
-    }
-
-    function setSurprizeRewards(bool lockStatus) external onlyOperator {
-        _surprizeRewardsLocked = lockStatus;
-        emit UpdatedSurprizeLocked(lockStatus);
-    }
-
-    function setChestRewards(bool lockStatus) external onlyOperator {
-        _chestRewardsLocked = lockStatus;
-        emit UpdatedChestLocked(lockStatus);
-    }    
-
-    function enabledIntermediary (address account) public view returns(bool){
+    function enabledIntermediary(address account) public view returns (bool){
         if(_smartArmy == address(0x0)) {
             return false;
         }
         return ISmartArmy(_smartArmy).isEnabledIntermediary(account);
     }
 
-    function getAmountFromBUSD(uint256 amount) public view returns(uint256){
-        return amount.div(_tokenPriceByBusd).mul(_busdDec);
-    }
-
-    function getAmountFromBNB(uint256 amount) public view returns(uint256){
-        return amount.div(_tokenPriceByBNB).mul(_bnbDec);
-    }
-
-    function buyTokenWithBNB() external payable {
-        address payable sender = payable(msg.sender);
-        uint256 _amount = getAmountFromBNB(msg.value);
-        require(
-            sender.balance >= msg.value, 
-            "balance is too small, you can't pay for minting."
-        );
-        _mintForPresale(msg.sender, _amount);
-        payable(_operator).transfer(msg.value);
-    }
-
-    function buyTokenWithBUSD(uint256 amount) external {
-        // require(existInWhitelist(to), "this address have to become whitelist");
-        IERC20 busd = IERC20(busdContract);        
-        uint256 amountIn = amount.mul(1e18);
-        uint256 allow = busd.allowance(msg.sender, address(this));
-        uint256 _amount = getAmountFromBUSD(amountIn);
-        require(allow >= amountIn, "cost is the smaller than allowed amount");
-        require(busd.balanceOf(msg.sender) >= amountIn, "balance is too small, you can't pay for minting.");
-        _mintForPresale(msg.sender, _amount);
-        busd.transferFrom(msg.sender, _operator, amountIn);
-    }
-
-    function buyTokenWithHelper(uint256 amount) external {
-        IERC20 busd = IERC20(busdContract);
-        uint256 amountIn = amount.mul(1e18);
-        uint256 _amount = getAmountFromBUSD(amountIn);
-        require(busd.balanceOf(msg.sender) >= amount, "balance is too small, you can't pay for minting.");        
-        _mintForPresale(msg.sender, _amount);
-        TransferHelper.safeTransfer(address(busd), _operator, amountIn);
-    }
-
-    function addAccountToWhitelist(address[] memory accounts) 
-        external onlyOperator 
-    {
-        uint256 counter = 0;
-        for(uint256 i=0; i<accounts.length; i++){
-            if(accounts[i] != address(0x0)){
-                _whitelist.push(accounts[i]); counter++;
-            }
-        }
-        emit AddedWhitelist(accounts.length);
-    }
-
-    function enableWhitelistAccount(address account, bool _enable) 
-        external onlyOperator 
-    {
-        mapEnabledWhitelist[account] = _enable;
-        emit UpdatedWhitelistAccount(account, _enable);
-    }
-
-    function getEnabledAccounts() public view returns(address[] memory) {
-        address[] memory availables;
-        uint256 cn = 0;
-        for(uint256 i=0; i<_whitelist.length; i++){
-            if(_whitelist[i] != address(0x0) 
-                && !mapEnabledWhitelist[_whitelist[i]]) {
-                    availables[cn++] = _whitelist[i];
-            }
-        }
-        return availables;
-    }
-
-    function existInWhitelist(address account) public view returns(bool) {
-        bool exist = false;
-        for(uint256 i=0; i<_whitelist.length; i++){
-            if(_whitelist[i] != address(0x0) 
-                && !mapEnabledWhitelist[_whitelist[i]]) {
-                if(_whitelist[i] == account){
-                    exist == true;
-                    break;
-                }
-            }
-        }
-        return exist;
-    }
-
-    function _swapTokenForBUSD(uint256 tokenAmount) private {
+    function _swapTokenForBUSD(address to, uint256 tokenAmount) private {
         _isSwap = true;
         IERC20 busdToken = comptroller.getBUSD();
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
@@ -959,13 +866,13 @@ contract SmartToken is Context, IBEP20, Ownable {
             tokenAmount,
             0,
             path,
-            address(this),
+            to,
             block.timestamp
         );
         _isSwap = false;
     }
 
-    function _swapTokenForBNB(uint256 tokenAmount) private {
+    function _swapTokenForBNB(address to, uint256 tokenAmount) private {
         _isSwap = true;
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
 
@@ -980,13 +887,10 @@ contract SmartToken is Context, IBEP20, Ownable {
             tokenAmount,
             0,
             path,
-            address(this),
+            to,
             block.timestamp
         );
         _isSwap = false;
     }
-
-     //to recieve ETH from uniswapV2Router when swaping
-    receive() external payable {}
 }
 

@@ -22,7 +22,9 @@ import './interfaces/ISmartArmy.sol';
 import './interfaces/ISmartFarm.sol';
 import './interfaces/IGoldenTreePool.sol';
 import './interfaces/IUniswapRouter.sol';
+import './interfaces/IUniswapPair.sol';
 import './interfaces/IUniswapFactory.sol';
+import 'hardhat/console.sol';
 
 contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   // using StableMath for uint256;
@@ -69,13 +71,13 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   event Staked(address indexed account, uint256 amount, uint256 lp);
   event Withdrawn(address indexed account, uint256 amount, uint256 lp);
   event Claimed(address indexed account, uint256 amount);
+  event UpdatedRewardWallet(address indexed account);
 
-
-  function initialize(address _comp, address _rewardWallet) 
+  function initialize(address _comp) 
     public initializer 
   {
 		__Ownable_init();
-    __SmartFarm_init_unchained(_comp, _rewardWallet);
+    __SmartFarm_init_unchained(_comp);
   }
 
   function _authorizeUpgrade(address newImplementation) 
@@ -83,24 +85,22 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   {    
   }
 
-
   function __SmartFarm_init_unchained(
-    address _comp, 
-    address _rewardWallet
+    address _comp
   ) internal initializer {
-      comptroller = ISmartComp(_comp);
-      
-      farmingTax_referral = 1000;
-      farmingTax_golden = 300;
-      farmingTax_dev = 100;
-      farmingTax_passive = 100;
+    comptroller = ISmartComp(_comp);
+    
+    farmingTax_referral = 1000;
+    farmingTax_golden = 300;
+    farmingTax_dev = 100;
+    farmingTax_passive = 100;
 
-      unstakingFee = 0;
-      farmingRewardPercent = 10;   // 0.1 %
-      farmingRewardWallet = _rewardWallet;
+    unstakingFee = 0;
+    farmingRewardPercent = 10;   // 0.1 %
+    farmingRewardWallet = address(this);
 
-      feeAddress = msg.sender;
-    }
+    feeAddress = msg.sender;
+  }
 
   /**
   * @notice Sets a new comptroller
@@ -113,6 +113,14 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     require(newComptroller.isComptroller(), "marker method returned false");
     // Set comptroller to newComptroller
     comptroller = newComptroller;
+  }
+
+  /**
+   * Update Farming Reward Wallet
+   */
+  function updateRewardWallet(address _rewardWallet) public onlyOwner {
+    farmingRewardWallet = _rewardWallet;
+    emit UpdatedRewardWallet(_rewardWallet);
   }
 
   /**
@@ -179,7 +187,12 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
   /** @dev only Rewards distributors */
   modifier onlyRewardsDistributor() {
-    require(contain(msg.sender) || msg.sender == owner(), "SmartFarm: only reward distributors");
+    require(
+      contain(msg.sender)
+      || msg.sender == (address)(comptroller.getSMT())
+      || msg.sender == owner(), 
+      "SmartFarm: only reward distributors"
+    );
     _;
   }
 
@@ -197,6 +210,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     // transfer all SMT token for farming passive rewards to 
     IERC20 smtToken = comptroller.getSMT();
+
     TransferHelper.safeTransfer(address(smtToken), farmingRewardWallet, _reward);
 
     // If previous period over, reset rewardRate
@@ -252,6 +266,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     return userInfo[account].rewards;
   }
 
+  function userInfoOf(address account) public view returns (UserInfo memory) {
+    return userInfo[account];
+  }
 
    /**
    * @dev Gets the last applicable timestamp for this reward period
@@ -276,7 +293,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     // prevent overflow
     require(rewardUnitsToDistribute < type(uint256).max / 1e18);
     // new reward units per token = (rewardUnitsToDistribute * 1e18) / totalTokens
-    
     uint256 unitsToDistributePerToken = rewardUnitsToDistribute * 1e18 / stakedTokens;
     // return summed rate
     return rewardPerTokenStored + unitsToDistributePerToken;
@@ -293,12 +309,11 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     (uint256 start, uint256 end) = comptroller.getSmartArmy().licenseActiveDuration(account, uInfo.lastUpdated, blockTime);
     if(start == 0 || end == 0) {
       return uInfo.rewards;
-    }
-    
+    }    
     uint256 duration = end - start;
     uint256 amount = duration * balanceOf(account) * farmingRewardPercent / 86400 / 10_000;
     return uInfo.rewards + amount;
-  }  
+  }
 
   /**
    * @dev Calculates the amount of unclaimed rewards a user has earned
@@ -394,13 +409,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function claimReward() 
     public 
     override
-    updateFixedReward(_msgSender())
-    updatePassiveReward(_msgSender())
   {
       UserInfo storage uInfo = userInfo[_msgSender()];
-
       uint256 rewards = rewardsOf(_msgSender());
-
       require(rewards > 0 , "SmartFarm#stakeSMT: Not enough rewards to claim");
 
       TransferHelper.safeTransferFrom(address(comptroller.getSMT()), farmingRewardWallet, _msgSender(), rewards);
@@ -421,11 +432,12 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    */
   function _tranferSmtToContract(
     address _from, 
-    address account, 
+    address account,
     uint256 _amount
   ) private returns(uint) {
     IERC20 smtToken = comptroller.getSMT();
     IERC20 busdToken = comptroller.getBUSD();
+    ISmartArmy smartArmy = comptroller.getSmartArmy();
   
     // Transfer SMT token from user to contract
     uint256 beforeBalance = smtToken.balanceOf(address(this));
@@ -488,22 +500,20 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       TransferHelper.safeTransfer(address(smtToken), address(pool), farmingTaxGoldenAmount);
       pool.notifyReward(farmingTaxGoldenAmount, account);
 
-      totalPaid = totalPaid + farmingTaxReferralAmount;
+      totalPaid = totalPaid + farmingTaxGoldenAmount;
     }
 
     if(farmingTaxDevAmount > 0) {
       TransferHelper.safeTransfer(address(smtToken), address(feeAddress), farmingTaxDevAmount);
-      totalPaid = totalPaid + farmingTaxReferralAmount;
+      totalPaid = totalPaid + farmingTaxDevAmount;
     }
 
     if(farmingTaxPassiveAmount > 0) {
       // TODO
       // transfer smt to passive pool and sync
       ISmartAchievement ach = comptroller.getSmartAchievement();
-
       TransferHelper.safeTransfer(address(smtToken), address(ach), farmingTaxPassiveAmount);
       ISmartAchievement(ach).swapDistribute();
-
       totalPaid = totalPaid + farmingTaxPassiveAmount;
     }
 
@@ -655,29 +665,26 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       return false;
   }
 
-  function addValue(address value) public {
+  function addValue(address value) internal {
       _rewardsDistributors.push(value);
   }
 
-  function removeByValue(address value) public {
+  function removeByValue(address value) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       uint i = indexOf(value);
       removeByIndex(i);
   }
 
-  function removeByIndex(uint i) public {
+  function removeByIndex(uint i) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       while (i<_rewardsDistributors.length-1) {
           _rewardsDistributors[i] = _rewardsDistributors[i+1];
           i++;
       }
       _rewardsDistributors.pop();
-      // delete _rewardsDistributors[_rewardsDistributors.length-1];
-      // _rewardsDistributors.length--;
   }
 
   function getRewardsDistributor() public view returns(address[] memory) {
       return _rewardsDistributors;
   }
-
 }

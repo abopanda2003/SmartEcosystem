@@ -27,6 +27,7 @@ interface ISmartArmy {
         uint256 activeAt;
         uint256 expireAt;
         uint256 lpLocked;
+        string tokenUri;
 
         LicenseStatus status;
     }
@@ -46,6 +47,7 @@ interface ISmartArmy {
     }
 
     function licenseOf(address account) external view returns(UserLicense memory);
+    function licenseIdOf(address account) external view returns(uint256);
     function licenseTypeOf(uint256 level) external view returns(LicenseType memory);
     function lockedLPOf(address account) external view returns(uint256);
     function isActiveLicense(address account) external view returns(bool);

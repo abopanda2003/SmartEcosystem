@@ -21,6 +21,7 @@ import './interfaces/IUniswapRouter.sol';
 import './interfaces/IWETH.sol';
 import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartAchievement.sol';
+import 'hardhat/console.sol';
 
 contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievement {
   // using StableMath for uint256;
@@ -145,7 +146,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     _;
   }
 
-
   /** @dev only Rewards distributors */
   modifier onlyRewardsDistributor() {
     require(contain(msg.sender) || msg.sender == owner(), "only reward distributors");
@@ -169,7 +169,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       emit RewardPaid(msg.sender, reward);
     }
   }
-
 
   function claimChestReward() public override {
     // update chest rewards before claim
@@ -445,7 +444,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   {
     IERC20 smt  = comptroller.getSMT();
     uint256 smtBalance = smt.balanceOf(address(this));
-    
     if(!swapEnabled || smtBalance <= limitPerSwap) {
       return;
     }
@@ -458,8 +456,10 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
 
     uint256 beforeBalance = address(this).balance;
+    uint256 swapAmount = smtBalance > limitPerSwap ? limitPerSwap : smtBalance;
+    smt.approve(address(_uniswapV2Router), swapAmount);
     _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-        smtBalance > limitPerSwap ? limitPerSwap : smtBalance,
+        swapAmount,
         0,
         wethpath,
         address(this),
@@ -471,7 +471,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     if(wethAmount > 0) {
       notifyRewardAmount(wethAmount);
     }
-
     emit RewardSwapped(wethAmount);
   }
 
@@ -519,17 +518,17 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       return false;
   }
 
-  function addValue(address value) public {
+  function addValue(address value) internal {
       _rewardsDistributors.push(value);
   }
 
-  function removeByValue(address value) public {
+  function removeByValue(address value) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       uint i = indexOf(value);
       removeByIndex(i);
   }
 
-  function removeByIndex(uint i) public {
+  function removeByIndex(uint i) internal {
       require(_rewardsDistributors.length > 0, "The array length is zero now.");
       while (i<_rewardsDistributors.length-1) {
           _rewardsDistributors[i] = _rewardsDistributors[i+1];

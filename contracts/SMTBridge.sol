@@ -10,6 +10,7 @@ pragma solidity 0.8.4;
 import "./libs/UniswapV2Library.sol";
 import "./interfaces/IUniswapFactory.sol";
 import "./interfaces/IUniswapRouter.sol";
+import "./interfaces/IUniswapPair.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/ISmartComp.sol";
 import './libs/TransferHelper.sol';
@@ -23,8 +24,8 @@ contract SMTBridge is Ownable {
     address public WBNB;
     address public pancakeFactory;
     
-    uint256 public aggregatorFee = 0; // Default to 0.0%
-    uint256 public constant FEE_DENOMINATOR = 10 ** 10;
+    uint256 public aggregatorFee = 17; // Default to 0.0%
+    uint256 public constant FEE_DENOMINATOR = 10_000;
 
     ISmartComp public comptroller;
 
@@ -34,17 +35,13 @@ contract SMTBridge is Ownable {
     }
 
     constructor (
-        address _wbnb,
-        address _factory,
         ISmartComp _comptroller
     ) {
-        require(_wbnb != address(0), "SMTBridge: ZERO_WBNB_ADDRESS");
-        require(_factory != address(0), "SMTBridge: ZERO_FACTORY_ADDRESS");
         require(address(_comptroller) != address(0), "SMTBridge: ZERO_SMARTCOMP_ADDRESS");
         
-        WBNB = _wbnb;
-        pancakeFactory = _factory;
         comptroller = _comptroller;
+        WBNB = _comptroller.getUniswapV2Router().WETH();
+        pancakeFactory = _comptroller.getUniswapV2Router().factory();
     }
 
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
@@ -160,9 +157,15 @@ contract SMTBridge is Ownable {
     }
 ///////////////////////////////////////////////////////////////////////
     // Transfer token from User => This => Pair
-    function _transferTokenToPair(address token, address from, address pair, uint value) internal {
+    function _transferTokenToPair(
+        address token, 
+        address from, 
+        address pair, 
+        uint value
+    ) internal {
         // First transfer token to this
         uint balanceBefore = IERC20(token).balanceOf(address(this));
+
         TransferHelper.safeTransferFrom(
             token, from, address(this), value
         );
@@ -170,6 +173,7 @@ contract SMTBridge is Ownable {
         
         // Second Transfer token to pair from this
         TransferHelper.safeTransfer(token, pair, amountIn);
+
     }
 
     receive() external payable { }

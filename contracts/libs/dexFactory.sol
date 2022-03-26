@@ -427,8 +427,8 @@ contract PancakeSwapPair is IPancakeSwapPair, PancakeSwapERC20 {
         { // scope for _token{0,1}, avoids stack too deep errors
         address token00 = _token0;
         address token11 = _token1;
-        // console.log("<<<<token00: %s <<<<<");
-        // require(to != token00 && to != token11, 'PancakeSwap: INVALID_TO');
+
+        require(to != token00 && to != token11, 'PancakeSwap: INVALID_TO');
         if (amount0Out > 0) _safeTransfer(token00, to, amount0Out); // optimistically transfer tokens
         if (amount1Out > 0) _safeTransfer(token11, to, amount1Out); // optimistically transfer tokens
         if (data.length > 0) IPancakeSwapCallee(to).PancakeSwapCall(msg.sender, amount0Out, amount1Out, data);
