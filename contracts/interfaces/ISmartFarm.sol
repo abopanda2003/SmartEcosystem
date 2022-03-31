@@ -12,6 +12,7 @@ interface ISmartFarm {
     }
 
     struct UserInfo {
+        uint256 tokenBalance;
         uint256 balance;
         uint256 rewards;
         uint256 rewardPerTokenPaid;     // User rewards per token paid for passive
@@ -20,6 +21,6 @@ interface ISmartFarm {
     
     function stakeSMT(address account, uint256 amount) external returns(uint256);
     function withdrawSMT(address account, uint256 amount) external returns(uint256);
-    function claimReward() external;
+    function claimReward(uint256 _amount) external;
     function notifyRewardAmount(uint _reward) external;
 }

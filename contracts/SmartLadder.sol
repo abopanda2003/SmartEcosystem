@@ -33,8 +33,10 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
 
   uint256 totalActivities;
 
-  /// @dev Users user => sponsor
-  mapping(address => address) public users;
+  /// @dev users // sponsor => users
+  mapping(address => address[]) public users;
+  /// @dev users // user => sponsor
+  mapping(address => address) public sponsor;
   
   /// @dev Events
   event ActivityUpdated(uint256 id, Activity activity);
@@ -105,6 +107,38 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   }
 
   /**
+   * return sponsor array
+   * @param _sponsor : user to register
+   */
+  function usersOf(address _sponsor) 
+    external override returns(address[] memory) 
+  {
+    return users[_sponsor];
+  }
+
+  function sponsorOf(address _user)
+    external override returns (address) 
+  {
+    return sponsor[_user];
+  }
+
+  /**
+   * is registered Referral
+   * @param _user : user to register
+   * @param _sponsor : address of sponsor
+   */
+  function isRegistered(address _user, address _sponsor) 
+    public view returns(bool) 
+  {
+    address[] memory userAddresses = users[_sponsor];
+    uint i=0;    
+    for(i=0; i<userAddresses.length; i++)
+      if(userAddresses[i] == _user) break;
+    if(i < userAddresses.length) return true;
+    return false;
+  }
+
+  /**
    * register Referral
    * @param _user : user to register
    * @param _sponsor : address of sponsor
@@ -112,15 +146,12 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   function registerSponsor(
     address _user,
     address _sponsor
-  ) 
-    public 
-    override
-  {
+  ) public override {
     require(msg.sender == address(comptroller.getSmartArmy()) || msg.sender == owner(), "SmartLadder#registerSponsor: only SmartArmy or owner");
-    require(users[_user] == address(0x0), "SmartLadder#registerSponsor: already registered");
-    users[_user] = _sponsor;
+    require(!isRegistered(_user, _sponsor), "SmartLadder#registerSponsor: already registered");
+    users[_sponsor].push(_user);
+    sponsor[_user] = _sponsor;
   }
-
 
   /**
    * add new Activity
@@ -158,10 +189,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   function updateActivityShare(
     uint256 _id, 
     uint16[7] memory _share
-  ) 
-    public 
-    onlyOwner 
-  {
+  ) public onlyOwner {
     Activity storage _activity = activities[_id];
     require(_activity.isValid, "SmartLadder#updateActivityShare: invalid activity");
 
@@ -182,10 +210,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   function enableActivity(
     uint256 _id,
     bool enable
-  )
-    public 
-    onlyOwner
-  {
+  ) public onlyOwner {
     Activity storage _activity = activities[_id];
     require(_activity.isValid, "SmartLadder#enableActivity: invalid activity");
 
@@ -193,7 +218,6 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
 
     emit ActivityEnabled(_id, enable);
   }
-
 
   /**
    * Update Activity Information
@@ -306,7 +330,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
       return;
     }
 
-    if(!_activity.isValid || !_activity.enabled || users[from] == address(0x0)) {
+    if(!_activity.isValid || !_activity.enabled || sponsor[from] == address(0x0)) {
       // if activity is not valid or is stopped now, all token to admin wallet
       TransferHelper.safeTransferTokenOrETH(token, adminWallet, amount);
       emit AdminReferralReward(from, adminWallet, token, amount);
@@ -315,7 +339,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
       address ref = from;
       for(uint i = 0 ; i < _activity.share.length; i++) {
         uint16 percent = _activity.share[i];
-        ref = users[ref];
+        ref = sponsor[ref];
         uint256 ladderLevel = comptroller.getSmartArmy().licenseLevelOf(ref);
         if(percent > 0 && ref != address(0x0) && i < ladderLevel) {
           uint256 shareAmount = amount * percent / PERCENTS_DIVIDER;
@@ -347,31 +371,4 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
       return activities[id];
   }
 
-  function sponsorOf(address account) 
-    public 
-    view
-    override
-    returns (address) 
-  {
-    return users[account];
-  }
-
-  function sponsorsOf(address account, uint count) 
-    public 
-    view
-    override
-    returns (address[] memory) 
-  {
-    address[] memory _sponsors = new address[](count);
-    address ref = account;
-    for (uint i = 0; i < count; i++) {
-      ref = users[ref];
-      if(ref == address(0x0)) {
-        break;
-      }
-      _sponsors[i] = ref;
-    }
-
-    return _sponsors;
-  }
 }

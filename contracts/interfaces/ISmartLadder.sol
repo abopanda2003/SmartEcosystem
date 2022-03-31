@@ -20,6 +20,6 @@ interface ISmartLadder {
     function distributeEcosystemTax(address account) external; 
     
     function activity(uint256 id) external view returns(Activity memory);
-    function sponsorOf(address account) external view returns(address);
-    function sponsorsOf(address account, uint count) external returns (address[] memory); 
+    function sponsorOf(address account) external returns (address);
+    function usersOf(address _sponsor) external returns(address[] memory);
 }

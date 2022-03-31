@@ -20,6 +20,7 @@ import "./interfaces/ISmartComp.sol";
 import "./interfaces/IGoldenTreePool.sol";
 import "./interfaces/ISmartAchievement.sol";
 import "./interfaces/ISmartLadder.sol";
+import "./interfaces/ISmartArmy.sol";
 import "hardhat/console.sol";
 
 contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool {
@@ -163,7 +164,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Swap SMT token to BUSD
    * This function should be called from anyone
    */
-  function swapDistribute() external override {
+  function swapDistribute() external override onlySmartMember {
     IERC20 busdToken = comptroller.getBUSD();
     IERC20 smtToken = comptroller.getSMT();
 
@@ -248,7 +249,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
       } 
       ref = smartLadder.sponsorOf(ref);
     }
-   
+    
     emit RewardAdded(amount, account);
   }
 
@@ -337,5 +338,17 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
       "GoldenTreePool: only reward distributors"
     );
     _;
+  }
+
+  modifier onlySmartMember() {
+    require(
+      msg.sender == address(comptroller.getSmartArmy())
+      || msg.sender == address(comptroller.getSmartLadder())
+      || msg.sender == address(comptroller.getSmartFarm())
+      || msg.sender == address(comptroller.getGoldenTreePool())
+      || msg.sender == address(comptroller.getSmartBridge())
+      || msg.sender == owner(),
+      "only smart members can access to this function");
+      _;
   }
 } 

@@ -44,7 +44,7 @@ contract SMT is Context, IBEP20, Ownable {
 
     address public _operator; 
     address public _smartArmy;
-    ISmartComp comptroller;
+    ISmartComp public comptroller;
     
     // tax addresses
     address public _referralAddress;

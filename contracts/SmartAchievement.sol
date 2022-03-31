@@ -21,6 +21,11 @@ import './interfaces/IUniswapRouter.sol';
 import './interfaces/IWETH.sol';
 import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartAchievement.sol';
+import "./interfaces/ISmartTokenCash.sol";
+import "./interfaces/ISmartComp.sol";
+import "./interfaces/IGoldenTreePool.sol";
+import "./interfaces/ISmartLadder.sol";
+import "./interfaces/ISmartArmy.sol";
 import 'hardhat/console.sol';
 
 contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievement {
@@ -150,6 +155,18 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   modifier onlyRewardsDistributor() {
     require(contain(msg.sender) || msg.sender == owner(), "only reward distributors");
     _;
+  }
+
+  modifier onlySmartMember() {
+    require(
+      msg.sender == address(comptroller.getSmartArmy())
+      || msg.sender == address(comptroller.getSmartLadder())
+      || msg.sender == address(comptroller.getSmartFarm())
+      || msg.sender == address(comptroller.getGoldenTreePool())
+      || msg.sender == address(comptroller.getSmartBridge())
+      || msg.sender == owner(), 
+      "only smart members can access to this function");
+      _;
   }
 
   /***************************************
@@ -439,8 +456,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
    * Swap and distribute SMT token to BNB
    */
   function swapDistribute() 
-    external
-    override 
+    external override onlySmartMember
   {
     IERC20 smt  = comptroller.getSMT();
     uint256 smtBalance = smt.balanceOf(address(this));

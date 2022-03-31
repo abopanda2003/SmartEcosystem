@@ -259,7 +259,8 @@ async function main() {
         NA_SmartLadder,
         NA_Busd,
         NA_SMT,
-        TestAccount
+        NA_SMTC,
+        NA_SMTCC
     } = await getNamedAccounts();
 
     console.log("router: ", NA_Router);
@@ -287,35 +288,35 @@ async function main() {
 
     const options = {    
 
-      deploySmartComp: true,
+      deploySmartComp: false,
       upgradeSmartComp: false,
       
-      deployGoldenTreePool: true,
+      deployGoldenTreePool: false,
       upgradeGoldenTreePool: false,
 
-      deploySmartAchievement: true,
+      deploySmartAchievement: false,
       upgradeSmartAchievement: false,
 
-      deploySmartArmy: true,
+      deploySmartArmy: false,
       upgradeSmartArmy: false,
 
-      deploySmartFarm: true,
+      deploySmartFarm: false,
       upgradeSmartFarm: false,
 
-      deploySmartLadder: true,
+      deploySmartLadder: false,
       upgradeSmartLadder: false,
 
-      deploySMTBridge: true,
+      deploySMTBridge: false,
 
       resetSmartComp: false,
 
-      deploySMTToken: true,
+      deploySMTToken: false,
 
-      testSMTTokenTransfer: true,
+      testSMTTokenTransfer: false,
 
-      testAddLiquidity: true,
+      testAddLiquidity: false,
 
-      testArmyLicense: true,
+      testArmyLicense: false,
       
       testSwap: false,
 
@@ -600,29 +601,26 @@ async function main() {
         await tx.wait();
         console.log("set SMT token to SmartComp: ", tx.hash);
 
-        // tx = await smtContract.setSmartArmyAddress(smartArmyAddress);
-        // await tx.wait();
-        // console.log("set smart army instance to token: ", tx.hash);        
-
-        // tx = await smtContract.setSmartComp(smartCompAddress);
-        // await tx.wait();
-        // console.log("set SmartComp to SMT token: ", tx.hash);
-
         tx = await smtContract.setTaxLockStatus(
             false, false, false, false, false, false
         );
         await tx.wait();
-        console.log("set tax lock status:", tx.hash);    
+        console.log("set tax lock status:", tx.hash);
 
-        // tx = await smtContract.createBUSDPair(NA_Busd);
-        // await tx.wait();
-        // console.log("set busd pair:", tx.hash);
-
-        // tx = await smtContract.createBNBPair();
-        // await tx.wait();
-        // console.log("set bnb pair:", tx.hash);    
+    } else {
+      green(`\nSMT Token deployed at ${smtTokenAddress}`);
     }
+
     let smtContract = await ethers.getContractAt("SMT", smtTokenAddress);
+    let isExcluded = await smtContract.isExcludedFromFee(NA_SMTCC);
+    if(!isExcluded){
+      let tx = await smtContract.connect(owner).excludeFromFee(NA_SMTCC, true);
+      await tx.wait();
+      console.log("SMTC Excluded Transaction: ", tx.hash);  
+    }else {
+      console.log("SMTC Already Excluded");  
+    }    
+
     let router = await smartCompInstance.getUniswapV2Router();
     let routerInstance = new ethers.Contract(
         router, uniswapRouterABI, owner
@@ -661,13 +659,14 @@ async function main() {
         await displayWalletBalances(smtContract, true, true, true);
         await displayWalletBalances(busdToken, true, true, true);
     }
+    
+    let pairSmtcBnbAddr = await smtContract._uniswapV2ETHPair();
+    console.log("SMT-BNB LP token address: ", pairSmtcBnbAddr);
+    let pairSmtcBusdAddr = await smtContract._uniswapV2BUSDPair();
+    console.log("SMT-BUSD LP token address: ", pairSmtcBusdAddr);
 
     if(options.testAddLiquidity) {
         cyan("%%%%%%%%%%%%%%%% Liquidity %%%%%%%%%%%%%%%%%");
-        let pairSmtcBnbAddr = await smtContract._uniswapV2ETHPair();
-        console.log("SMT-BNB LP token address: ", pairSmtcBnbAddr);
-        let pairSmtcBusdAddr = await smtContract._uniswapV2BUSDPair();
-        console.log("SMT-BUSD LP token address: ", pairSmtcBusdAddr);
 
         let router = await smartCompInstance.getUniswapV2Router();
         console.log("router: ", router);

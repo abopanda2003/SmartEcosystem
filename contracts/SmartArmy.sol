@@ -322,8 +322,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Add Liquidity => LP token Lock
    */
   function _tranferSmtToContract(address _from, uint256 _amount) 
-    private 
-    returns(uint) 
+    private returns(uint)
   {
     IERC20 smtToken = comptroller.getSMT();
     // Transfer SMT token from user to contract

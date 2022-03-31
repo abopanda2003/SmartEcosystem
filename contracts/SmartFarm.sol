@@ -60,7 +60,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   uint256 public unstakingFee;
 
   uint256 public farmingRewardPercent;
-  address public farmingRewardWallet;
 
   /// @dev Address for collecting fee
   address public feeAddress;
@@ -97,7 +96,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     unstakingFee = 0;
     farmingRewardPercent = 10;   // 0.1 %
-    farmingRewardWallet = address(this);
 
     feeAddress = msg.sender;
   }
@@ -118,10 +116,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   /**
    * Update Farming Reward Wallet
    */
-  function updateRewardWallet(address _rewardWallet) public onlyOwner {
-    farmingRewardWallet = _rewardWallet;
-    emit UpdatedRewardWallet(_rewardWallet);
-  }
+  // function updateRewardWallet(address _rewardWallet) public onlyOwner {
+  //   farmingRewardWallet = _rewardWallet;
+  //   emit UpdatedRewardWallet(_rewardWallet);
+  // }
 
   /**
    * Update Fee information
@@ -153,15 +151,11 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    * Update farming reward pecentage and wallet address
    */
   function updateFarmingRewardParams(
-    uint256 percent,
-    address wallet
+    uint256 percent
   ) external onlyOwner {
 
-    require(wallet != address(0x0), "SmartFarm#updateFarmingReward: invalid wallet address");
     require(percent <= 10_000, "SmartFarm#updateFarmingReward: too big percent");
-
     farmingRewardPercent = percent;
-    farmingRewardWallet = wallet;
   }
 
 
@@ -209,9 +203,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     uint currentTime = block.timestamp;
 
     // transfer all SMT token for farming passive rewards to 
-    IERC20 smtToken = comptroller.getSMT();
+    // IERC20 smtToken = comptroller.getSMT();
 
-    TransferHelper.safeTransfer(address(smtToken), farmingRewardWallet, _reward);
+    // TransferHelper.safeTransfer(address(smtToken), farmingRewardWallet, _reward);
 
     // If previous period over, reset rewardRate
     if (currentTime >= periodFinish) {
@@ -229,7 +223,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     emit RewardAdded(_reward);
   }
-
 
   /** @dev Updates the reward for a given address, before executing function */
   modifier updatePassiveReward(address account) {
@@ -256,6 +249,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
           uInfo.lastUpdated = block.timestamp;
       }
       _;
+  }
+
+  function reserve(address account) public view returns (uint256) {
+    return userInfo[account].tokenBalance;
   }
 
   function balanceOf(address account) public view returns (uint256) {
@@ -354,6 +351,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     UserInfo storage uInfo = userInfo[account];
     uInfo.balance = uInfo.balance + liquidity;
+    uInfo.tokenBalance = uInfo.tokenBalance + amount;
 
     totalStaked = totalStaked + liquidity;
 
@@ -395,6 +393,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     require(smtAmount > 0, "SmartFarm#withdrawSMT: failed to sent SMT to staker");
 
     uInfo.balance = uInfo.balance - lpAmount;
+    uInfo.tokenBalance = uInfo.tokenBalance - smtAmount;
     
     totalStaked = totalStaked - lpAmount;
     
@@ -406,7 +405,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   /**
    * ///@notice Redeem SMT rewards from staking
    */
-  function claimReward() 
+  function claimReward(uint256 _amount) 
     public 
     override
   {
@@ -414,15 +413,15 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       uint256 rewards = rewardsOf(_msgSender());
       require(rewards > 0 , "SmartFarm#stakeSMT: Not enough rewards to claim");
 
-      TransferHelper.safeTransferFrom(address(comptroller.getSMT()), farmingRewardWallet, _msgSender(), rewards);
+      TransferHelper.safeTransfer(address(comptroller.getSMT()), _msgSender(), _amount);
 
-      uInfo.rewards = 0;
+      uInfo.rewards = uInfo.rewards - _amount;
       emit Claimed(_msgSender(), rewards);
   }
   
   function exit() external {
     withdrawSMT(msg.sender, balanceOf(msg.sender));
-    claimReward();
+    claimReward(rewardsOf(msg.sender));
   }
 
   /**
