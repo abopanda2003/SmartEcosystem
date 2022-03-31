@@ -214,12 +214,12 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     require(licenseOf(msg.sender).status == LicenseStatus.None
       || licenseOf(msg.sender).status == LicenseStatus.Expired, "SmartArmy#startLicense: already started");
 
-    uint256 newLicenseId = totalLicenses + 1;
+    totalLicenses = totalLicenses + 1;
 
     LicenseType memory _type = licenseTypes[_level];
     require(_type.isValid, "SmartArmy#startLicense: Invalid License Level");
 
-    UserLicense storage license = licenses[newLicenseId];
+    UserLicense storage license = licenses[totalLicenses];
     license.owner = _msgSender();
     license.level = _level;
     license.startAt = block.timestamp;
@@ -228,7 +228,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     license.tokenUri = _tokenUri;
     license.status  = LicenseStatus.Pending;
 
-    userLicenses[_msgSender()] = newLicenseId;
+    userLicenses[_msgSender()] = totalLicenses;
 
     UserPersonal storage info = userInfo[_msgSender()];
     info.username = _username;
