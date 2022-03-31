@@ -111,13 +111,13 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
    * @param _sponsor : user to register
    */
   function usersOf(address _sponsor) 
-    external override returns(address[] memory) 
+    external override view returns(address[] memory) 
   {
     return users[_sponsor];
   }
 
   function sponsorOf(address _user)
-    external override returns (address) 
+    external override view returns (address) 
   {
     return sponsor[_user];
   }
