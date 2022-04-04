@@ -58,7 +58,8 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   mapping(address => uint256) public checkRewardUpdated;
   mapping(address => uint256) public nobleRewards; // Noble SMTC Reward
   mapping(address => uint256) public farmRewards; // Farmer SMTC Reward
-  mapping(address => uint256) public surpriseRewards; // Farmer SMTC Reward
+  mapping(address => uint256) public supSmtRewards; // Surprize Reward
+  mapping(address => uint256) public supSmtcRewards; // Surprize Reward
   
   uint256 private randNonce;
 
@@ -70,6 +71,10 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
 
   address[] _farmers;
   address[] _nobleLeaders;
+
+  uint256[][9] supPool;
+  uint256[9] supTotalSupply;
+
 
   // Account => Nobility type
   mapping(address => uint256) public userNobilities;
@@ -97,9 +102,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     smtcTokenAddress = _smtcToken;
 
     totalNobilityTypes = 8;
-
-    swapEnabled = true;
-    limitPerSwap = 1000 * 1e18;
 
     // initialize nobility types
     _updateNobilityType(1, 'Folks', 1, 10, 2, 281e6,
@@ -133,6 +135,12 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     _updateNobilityType(8, 'King',  2000,  50,  700,  10,
       [uint256(1e18), 1e18, 1e19, 1e20, 0, 0, 0, 0, 0, 0],
       [uint256(5e18), 5e19, 5e20, 5e21, 0, 0, 0, 0, 0, 0]);
+
+    uint256[9] memory smt = [uint256(1e22), 1e21, 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14]; // SMT
+    uint256[9] memory smtc = [uint256(1e21), 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14, 1e13];  // SMTC
+    supPool = [smt, smtc];
+
+    supTotalSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
   }
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
@@ -155,18 +163,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     _;
   }
 
-  /** @dev only Noble Rewards distributors */
-  modifier onlyNobleRewardsDistributor() {
-    require(contain(_nobleLeaders, msg.sender) || msg.sender == owner(), "only noble reward distributors");
-    _;
-  }
-
-  /** @dev only Farm Rewards distributors */
-  modifier onlyFarmRewardsDistributor() {
-    require(contain(_farmers, msg.sender) || msg.sender == owner(), "only farm reward distributors");
-    _;
-  }
-
   modifier onlySmartMember() {
     require(
       msg.sender == address(comptroller.getSmartArmy())
@@ -182,12 +178,11 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   /***************************************
                     ACTIONS
   ****************************************/
-
   /**
    * @dev Claims outstanding rewards for the sender.
    * First updates outstanding reward allocation and then transfers.
    */
-  function claimReward() public override updateReward(msg.sender) {
+  function claimReward() external override updateReward(msg.sender) onlySmartMember {
     uint256 reward = rewards[msg.sender];
     if (reward > 0) {
       rewards[msg.sender] = 0;
@@ -197,7 +192,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     }
   }
 
-  function claimChestReward() public override {
+  function claimChestReward() external override {
     // update chest rewards before claim
     updateChestReward(msg.sender);
 
@@ -212,21 +207,40 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     }
   }
 
-  function claimNobleReward()
-    public override onlyNobleRewardsDistributor {
-    if(nobleRewards[msg.sender] > 0) {
-      TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, nobleRewards[msg.sender]);
-      nobleRewards[msg.sender] = 0;
+  function claimNobleReward(uint256 _amount) external override {
+    uint256 balance = nobleRewards[msg.sender];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+
+    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    nobleRewards[msg.sender] = nobleRewards[msg.sender] - _amount;
+  }
+
+  function claimFarmReward(uint256 _amount) external override {
+    uint256 balance = farmRewards[msg.sender];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+
+    if(farmRewards[msg.sender] > 0) {
+      TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+      farmRewards[msg.sender] = farmRewards[msg.sender] - _amount;
     }
   }
 
-  function claimFarmReward()
-    public override onlyFarmRewardsDistributor {
-    if(farmRewards[msg.sender] > 0) {
-      TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, farmRewards[msg.sender]);
-      farmRewards[msg.sender] = 0;
-    }
+  function claimSurprizeSMTReward(uint256 _amount) external override {
+    uint256 balance = supSmtRewards[msg.sender];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+
+    TransferHelper.safeTransfer(address(comptroller.getSMT()), msg.sender, _amount);
+    supSmtRewards[msg.sender] = supSmtRewards[msg.sender] - _amount;
   }
+
+  function claimSurprizeSMTCReward(uint256 _amount) external override {
+    uint256 balance = supSmtcRewards[msg.sender];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+
+    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    supSmtcRewards[msg.sender] = supSmtcRewards[msg.sender] - _amount;
+  }
+
 
   /***************************************
                     GETTERS
@@ -304,16 +318,16 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     return nobilityOf(account).title;
   }
 
-  function addFarmDistributor(address _account) 
+  function addFarmDistributor(address _account)
               external override onlySmartMember {
     require(_account != address(0x0), "account address can't be zero address");
-    addFarmer(_account);
+    addFarmUser(_account);
   }
 
   function removeFarmDistributor(address _account) 
               external override onlySmartMember {
     require(_account != address(0x0), "account address can't be zero address");
-    removeValueOnFarmer(_account);
+    removeFarmUser(_account);
   }
 
   /**
@@ -338,7 +352,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
    * @dev distribute rewards to all the farmers
    */
   function distributeToFarmers(uint256 _amount)
-    external override onlySmartMember {
+              external override onlySmartMember {
     
     if(_farmers.length == 0) return;
     uint256 unitRewards = _amount / _farmers.length;
@@ -347,6 +361,23 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       address user = _farmers[i];
       farmRewards[user] = unitRewards;
     }
+  }
+
+  /**
+   * @dev distribute surprize rewards
+   */
+  function distributeSurprizeReward(address _account)
+                    external override onlySmartMember {
+  
+    uint256 seed = uint256(keccak256(abi.encode(block.number, msg.sender, block.timestamp)));
+    uint256 poolIndex = _getRandomNumebr(seed, supTotalSupply.length);
+    uint256 coinIndex = poolIndex % 2;
+    
+    uint256 selectedReward = supPool[coinIndex][poolIndex];
+    if(coinIndex == 0) supSmtRewards[_account] = selectedReward;
+    else supSmtcRewards[_account] = selectedReward;
+
+    supTotalSupply[poolIndex] = supTotalSupply[poolIndex] - 1;
   }
 
   /**
@@ -375,20 +406,17 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       userNobilityCounts[id] = userNobilityCounts[id] + 1;
 
       ISmartArmy army = comptroller.getSmartArmy();
-      if(id == 1 && army.isActiveLicense(account)) 
-        addNobleLeader(account);
+      if(id == 1 && army.isActiveLicense(account)) addNobleUser(account);
 
       if(id > 1) {
         userNobilityCounts[id - 1] = userNobilityCounts[id - 1] - 1;
       }
 
-      if(id == 2) {
-        // From Nobility = 2 : Baron Chest rewards start
-        checkRewardUpdated[account] = block.timestamp; 
+      if(id == 2) { // From Nobility = 2 : Baron Chest rewards start
+        checkRewardUpdated[account] = block.timestamp;
       } else if(id > 2) {
         updateChestReward(account);
       }
-      
       emit UserNobilityUpgraded(account, id);
       return true;
     }
@@ -409,7 +437,9 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     checkRewardUpdated[account] = checkRewardUpdated[account] + weeklyRewards;
   }
 
-  function getRandomReward(uint256 nonce, uint256 nobilityType) private view returns(uint256, uint256) {
+  function getRandomReward(uint256 nonce, uint256 nobilityType) 
+                        private view returns(uint256, uint256) {
+
     NobilityType memory _type = nobilityTypes[nobilityType];
 
     uint256 seed = uint256(keccak256(abi.encode(nonce, msg.sender, block.timestamp)));
@@ -587,11 +617,11 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     return contain(_nobleLeaders, _account);
   }
 
-  function addNobleLeader(address value) internal {
+  function addNobleUser(address value) internal {
       _nobleLeaders.push(value);
   }
 
-  function removeValueOnNoble(address value) internal {
+  function removeNobleUser(address value) internal {
       require(_nobleLeaders.length > 0, "The array length is zero now.");
       uint i = indexOf(_nobleLeaders, value);
       removeIndexOnNoble(i);
@@ -606,11 +636,11 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       _nobleLeaders.pop();
   }
 
-  function addFarmer(address value) internal {
+  function addFarmUser(address value) internal {
       _farmers.push(value);
   }
 
-  function removeValueOnFarmer(address value) internal {
+  function removeFarmUser(address value) internal {
       require(_farmers.length > 0, "The array length is zero now.");
       uint i = indexOf(_farmers, value);
       removeIndexOnFarmer(i);

@@ -203,10 +203,11 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     emit RewardSwapped(smtBalance, amount);
   }
 
-  function distributeToNobleLeaders(uint256 phase) internal {
+  function distributePhaseReward(uint256 phase) internal {
     uint256 smtcRewards = phaseRewards[phase-1];
     ISmartAchievement ach = comptroller.getSmartAchievement();
     ach.distributeToNobleLeaders(smtcRewards);
+    ach.distributeToFarmers(smtcRewards);
   }
 
   /**
@@ -263,8 +264,8 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     totalRevenue += busdAmount;
     uint256 newPhase = currentPhaseOfGoldenTree();
     if(currentPhase < newPhase){
-      distributeToNobleLeaders(newPhase);
-      currentPhase = newPhase;      
+      distributePhaseReward(newPhase);
+      currentPhase = newPhase;
       emit UpgradeTreePhase(newPhase);
     }
     emit RewardAdded(amount, account);
@@ -314,7 +315,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
   }
 
   function currentPhaseOfGoldenTree() public view returns(uint256) {
-    uint256 totalGrowth = currentTotalGrowth();
+    uint256 totalGrowth = currentTotalGrowth() / 1e18;
     if(totalGrowth < phaseThresold[0]) return 0;
 
     uint256 i;

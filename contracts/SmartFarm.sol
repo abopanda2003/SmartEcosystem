@@ -335,18 +335,17 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    */
   function stakeSMT(
     address account,
-    uint256 amount
+    uint256 amount    
   ) 
-    public
-    override
-    updateFixedReward(account)
-    updatePassiveReward(account)
+    public override
+    updateFixedReward(msg.sender)
+    updatePassiveReward(msg.sender)
     returns(uint256)
   {
     ISmartArmy smartArmy = comptroller.getSmartArmy();
     require(_msgSender() == address(smartArmy) || _msgSender() == account, "SmartFarm#stakeSMT: invalid account");
 
-    uint256 liquidity = _tranferSmtToContract(_msgSender(), account, amount);
+    uint256 liquidity = _tranferSmtToContract(_msgSender(), amount);
     require(liquidity > 0, "SmartFarm#stakeSMT: failed to add liquidity");
 
     if(amount > 100) {
@@ -356,7 +355,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     UserInfo storage uInfo = userInfo[account];
     uInfo.balance = uInfo.balance + liquidity;
-    uInfo.tokenBalance = uInfo.tokenBalance + amount;
 
     totalStaked = totalStaked + liquidity;
 
@@ -440,7 +438,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    */
   function _tranferSmtToContract(
     address _from, 
-    address account,
     uint256 _amount
   ) private returns(uint) {
     IERC20 smtToken = comptroller.getSMT();
@@ -454,8 +451,11 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     // distribute farming tax
     {
-      uint256 totalFarmingTax = _distributeFarmingTax(account, amount);
+      uint256 totalFarmingTax = _distributeFarmingTax(_from, amount);
       amount = amount - totalFarmingTax;
+
+      UserInfo storage uInfo = userInfo[_from];
+      uInfo.tokenBalance = uInfo.tokenBalance + amount;
     }
 
     // Swap half of SMT token to BUSD

@@ -100,6 +100,7 @@ contract SMT is Context, IBEP20, Ownable {
     mapping(address => mapping(address => uint256)) private _allowances;
     mapping(address => bool) public _excludedFromFee;
     mapping(address => address) public _mapAssetToPair; // Asset --> SMT-Asset Pair
+    mapping(address => uint256) public _mapSurprizeRewardPaid; // User => surprize rewards paid
 
     event TaxAddressesUpdated(
         address indexed referral, 
@@ -313,6 +314,14 @@ contract SMT is Context, IBEP20, Ownable {
         return true;
     }
 
+    function _approve(address owner, address spender, uint256 amount) internal {
+        require(owner != address(0), 'SMT: approve from the zero address');
+        require(spender != address(0), 'SMT: approve to the zero address');
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
     function transfer(address recipient, uint256 amount) external override returns (bool) {
         _transferFrom(_msgSender(), recipient, amount);
         return true;
@@ -351,7 +360,7 @@ contract SMT is Context, IBEP20, Ownable {
         require(sender != address(0), 'SMT: transfer from the zero address');
         require(recipient != address(0), 'SMT: transfer to the zero address');
         require(_balances[sender] >= amount, "SMT: balance of sender is too small.");
-
+        
         if (_isSwap || _excludedFromFee[sender] || _excludedFromFee[recipient]) {
             _transfer(sender, recipient, amount);
         } else {
@@ -366,9 +375,10 @@ contract SMT is Context, IBEP20, Ownable {
             } else if(fromPair && recipient == _intermediaryAddress) {
                 // Pair => Intermediary: No Fee
                 uint256 taxAmount = amount.mul(_buyIntermediaryTaxFee).div(100);
-                uint256 recvAmount = amount.sub(taxAmount);                
+                uint256 recvAmount = amount.sub(taxAmount);
                 distributeBuyTax(sender, recipient, taxAmount);
                 _transfer(sender, recipient, recvAmount);
+                addSurprizeDistributor();
             } else if(sender == _intermediaryAddress || recipient == _intermediaryAddress) {
                 if (recipient == _intermediaryAddress) {
                     require(enabledIntermediary(sender), "SMT: no smart army account");
@@ -391,6 +401,7 @@ contract SMT is Context, IBEP20, Ownable {
                 uint256 recvAmount = amount.sub(taxAmount);
                 distributeBuyTax(sender, recipient, taxAmount);
                 _transfer(sender, recipient, recvAmount);
+                addSurprizeDistributor();
             } else if(toPair) {
                 // sell transfer 
                 uint256 taxAmount = amount.mul(_sellNormalTaxFee).div(100);
@@ -532,12 +543,15 @@ contract SMT is Context, IBEP20, Ownable {
         IGoldenTreePool(_goldenTreePoolAddress).notifyReward(amount, account);
     }
 
-    function _approve(address owner, address spender, uint256 amount) internal {
-        require(owner != address(0), 'SMT: approve from the zero address');
-        require(spender != address(0), 'SMT: approve to the zero address');
-
-        _allowances[owner][spender] = amount;
-        emit Approval(owner, spender, amount);
+    function addSurprizeDistributor() internal {
+        ISmartArmy license = comptroller.getSmartArmy();
+        address sender = address(tx.origin);
+        uint256 amount = _balances[sender] - _mapSurprizeRewardPaid[sender];
+        if(license.isActiveLicense(sender) &&  amount >= 1000) {
+            ISmartAchievement ach = comptroller.getSmartAchievement();
+            ach.distributeSurprizeReward(sender);
+            _mapSurprizeRewardPaid[sender] += amount;
+        }
     }
 
     /**
