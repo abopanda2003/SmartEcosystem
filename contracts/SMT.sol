@@ -28,12 +28,7 @@ import 'hardhat/console.sol';
 contract SMT is Context, IBEP20, Ownable {
     using SafeMath for uint256;
 
-    struct BuyingTokenInfo {
-        uint256 price;
-        uint256 decimal;
-    }
-
-    uint256 private _totalSupply;
+    uint256 private _totalSupply = 15000000 * 1e18;
     string private _name;
     string private _symbol;
     uint8 private _decimals;
@@ -42,7 +37,7 @@ contract SMT is Context, IBEP20, Ownable {
     address public _uniswapV2BUSDPair;
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    address public _operator; 
+    address public _operator;
     address public _smartArmy;
     ISmartComp public comptroller;
     
@@ -50,7 +45,7 @@ contract SMT is Context, IBEP20, Ownable {
     address public _referralAddress;
     address public _goldenTreePoolAddress;
     address public _devAddress;
-    address public _achievementSystemAddress;
+    address public _achievementAddress;
     address public _farmingRewardAddress;
     address public _intermediaryAddress;
     address public _airdropAddress;
@@ -90,31 +85,14 @@ contract SMT is Context, IBEP20, Ownable {
     uint256 public _transferGoldenFee = 50;
     uint256 public _transferFarmingFee = 30;
 
-    uint256 public constant MAX_TOTAL_SUPPLY = 15000000 * 1e18;
-
     uint256 public _liquidityDist; // SMT-BNB liquidity distribution (locked)
     uint256 public _farmingRewardDist; // farming rewards distribution (locked)
     uint256 public _presaleDist; // presale distribution
+    uint256 public _privateSaleDist; // private sale distribution
     uint256 public _airdropDist; // airdrop distribution
     uint256 public _suprizeRewardsDist; // surprize rewards distribution (locked)
     uint256 public _chestRewardsDist; // chest rewards distribution (locked)
     uint256 public _devDist; // marketing & development distribution (unlocked)
-
-    address[] public _whitelist;
-    mapping(address => bool) mapEnabledWhitelist;
-
-    bool _initialLiquidityLocked;
-    bool _farmingRewardsLocked;
-    bool _surprizeRewardsLocked;
-    bool _chestRewardsLocked;
-    bool _devRewardsLocked;
-    bool _airdropRewardsLocked;
-    
-    uint256 public _tokenPriceByBusd = 15;
-    uint256 public _busdDec = 10;
-
-    uint256 public _tokenPriceByBNB = 25;
-    uint256 public _bnbDec = 1000;
 
     bool _isSwap = false;    
 
@@ -122,7 +100,6 @@ contract SMT is Context, IBEP20, Ownable {
     mapping(address => mapping(address => uint256)) private _allowances;
     mapping(address => bool) public _excludedFromFee;
     mapping(address => address) public _mapAssetToPair; // Asset --> SMT-Asset Pair
-    mapping(address => BuyingTokenInfo) public _mapBuyingToken;
 
     event TaxAddressesUpdated(
         address indexed referral, 
@@ -210,7 +187,14 @@ contract SMT is Context, IBEP20, Ownable {
     modifier onlyOperator() {
         require(_operator == msg.sender || msg.sender == owner(), "SMT: caller is not the operator");
         _;
-    }    
+    }
+
+    modifier lockSwap() {
+        _isSwap = true;
+        _;
+        _isSwap = false;
+    }
+
     /**
      * @dev Sets the values for busdContract, {totalSupply} and tax addresses
      *
@@ -223,11 +207,12 @@ contract SMT is Context, IBEP20, Ownable {
         _name = "Smart Token";
         _symbol = "SMT";
         _decimals = 18;
+        _totalSupply = _totalSupply;
 
         comptroller = ISmartComp(smartComp);
         _referralAddress = address(comptroller.getSmartLadder());
         _goldenTreePoolAddress = address(comptroller.getGoldenTreePool());
-        _achievementSystemAddress = address(comptroller.getSmartAchievement());
+        _achievementAddress = address(comptroller.getSmartAchievement());
         _farmingRewardAddress = address(comptroller.getSmartFarm());
         _intermediaryAddress = comptroller.getSmartBridge();
         _smartArmy = address(comptroller.getSmartArmy());
@@ -237,7 +222,7 @@ contract SMT is Context, IBEP20, Ownable {
 
         _excludedFromFee[_referralAddress] = true;
         _excludedFromFee[_goldenTreePoolAddress] = true;
-        _excludedFromFee[_achievementSystemAddress] = true;
+        _excludedFromFee[_achievementAddress] = true;
         _excludedFromFee[_farmingRewardAddress] = true;
         _excludedFromFee[_intermediaryAddress] = true;
         _excludedFromFee[_devAddress] = true;
@@ -257,43 +242,38 @@ contract SMT is Context, IBEP20, Ownable {
         _uniswapV2BUSDPair = IUniswapV2Factory(_uniswapV2Router.factory())
             .createPair(address(this), address(busdContract));
 
-        _liquidityDist = MAX_TOTAL_SUPPLY.div(10);
-        _farmingRewardDist = MAX_TOTAL_SUPPLY.div(1000).mul(383);
-        _presaleDist = MAX_TOTAL_SUPPLY.div(10).mul(3);
-        _airdropDist = MAX_TOTAL_SUPPLY.div(1000).mul(5);
-        _suprizeRewardsDist = MAX_TOTAL_SUPPLY.div(100).mul(9);
-        _chestRewardsDist = MAX_TOTAL_SUPPLY.div(1000).mul(121);
-        _devDist = MAX_TOTAL_SUPPLY.div(1000);
+
+        // farming reward mint.
+        _farmingRewardDist = _totalSupply.div(1e5).mul(56037);
+        _balances[_farmingRewardAddress] = _balances[_farmingRewardAddress].add(_farmingRewardDist);
+
+        // presale mint.
+        _presaleDist = _totalSupply.div(1e5).mul(13333);
+        _balances[_operator] = _balances[_operator].add(_presaleDist);
+
+        // private sale mint.
+        _privateSaleDist = _totalSupply.div(1e5).mul(3333);
+        _balances[_operator] = _balances[_operator].add(_privateSaleDist);
 
         // mint initial liquidity to owner wallet.
+        _liquidityDist = _totalSupply.div(1e5).mul(11333);
         _balances[_operator] = _balances[_operator].add(_liquidityDist);
-        _totalSupply = _totalSupply.add(_liquidityDist);
-        emit Transfer(address(0), _operator, _liquidityDist);
-
-        // mint some tokens to dev wallet.
-        _balances[_devAddress] = _balances[_devAddress].add(_devDist);
-        _totalSupply = _totalSupply.add(_devDist);
-        emit Transfer(address(0), _devAddress, _devDist);
-
-        // mint some tokens to airdrop wallet.
-        _balances[_airdropAddress] = _balances[_airdropAddress].add(_airdropDist);
-        _totalSupply = _totalSupply.add(_airdropDist);
-        emit Transfer(address(0), _airdropAddress, _airdropDist);
-
-        // mint tokens for farming reward to farming contract.
-        _balances[_farmingRewardAddress] = _balances[_farmingRewardAddress].add(_farmingRewardDist);
-        _totalSupply = _totalSupply.add(_farmingRewardDist);
-        emit Transfer(address(0), _farmingRewardAddress, _farmingRewardDist);
 
         // mint chest rewards to achievement contract.
-        _balances[_operator] = _balances[_operator].add(_chestRewardsDist);
-        _totalSupply = _totalSupply.add(_chestRewardsDist);
-        emit Transfer(address(0), _operator, _chestRewardsDist);
-        
+        _chestRewardsDist = _totalSupply.div(1e5).mul(8864);
+        _balances[_achievementAddress] = _balances[_achievementAddress].add(_chestRewardsDist);
+
         // mint surprize rewards to achievement contract.
-        _balances[_operator] = _balances[_operator].add(_suprizeRewardsDist);
-        _totalSupply = _totalSupply.add(_suprizeRewardsDist);
-        emit Transfer(address(0), _operator, _suprizeRewardsDist);
+        _suprizeRewardsDist = _totalSupply.div(100).mul(6);
+        _balances[_achievementAddress] = _balances[_achievementAddress].add(_suprizeRewardsDist);
+
+        // mint some tokens to airdrop wallet.
+        _airdropDist = _totalSupply.div(100);
+        _balances[_airdropAddress] = _balances[_airdropAddress].add(_airdropDist);
+
+        // mint some tokens to dev wallet.
+        _devDist = _totalSupply.div(1000);
+        _balances[_devAddress] = _balances[_devAddress].add(_devDist);
     }
 
     function getOwner() external override view returns (address) {
@@ -441,7 +421,7 @@ contract SMT is Context, IBEP20, Ownable {
 
     function _transferToAchievement(address _sender, uint256 amount) internal {        
         _transfer(_sender, address(this), amount);
-        _swapTokenForBNB(_achievementSystemAddress, amount);
+        _swapTokenForBNB(_achievementAddress, amount);
     }
 
     function distributeSellTax (
@@ -468,7 +448,7 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_sellAchievementFee).div(100);
-            _transfer(sender, _achievementSystemAddress, achievementAmount);
+            _transfer(sender, _achievementAddress, achievementAmount);
         }
     }
 
@@ -496,7 +476,7 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_buyAchievementFee).div(100);
-            _transfer(sender, _achievementSystemAddress, achievementAmount);
+            _transfer(sender, _achievementAddress, achievementAmount);
         }
     }
 
@@ -524,14 +504,14 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
-            _transfer(sender, _achievementSystemAddress, achievementAmount);
+            _transfer(sender, _achievementAddress, achievementAmount);
         }
     }
 
     /**
      * @dev Distributes buy tax tokens to smart ladder system
      */
-    function distributeBuyTaxToLadder (address from) internal {
+    function distributeBuyTaxToLadder(address from) internal {
         require(_referralAddress != address(0x0), "SmartLadder can't be zero address");
         ISmartLadder(_referralAddress).distributeBuyTax(from);
     }
@@ -802,9 +782,9 @@ contract SMT is Context, IBEP20, Ownable {
             _devAddress = dev;
             _excludedFromFee[dev] = true;
         }
-        if (_achievementSystemAddress != achievement && achievement != address(0x0)) {
-            _excludedFromFee[_achievementSystemAddress] = false;
-            _achievementSystemAddress = achievement;
+        if (_achievementAddress != achievement && achievement != address(0x0)) {
+            _excludedFromFee[_achievementAddress] = false;
+            _achievementAddress = achievement;
             _excludedFromFee[achievement] = true;
         }
         if (_farmingRewardAddress != farming && farming != address(0x0)) {
@@ -850,8 +830,7 @@ contract SMT is Context, IBEP20, Ownable {
         return ISmartArmy(_smartArmy).isEnabledIntermediary(account);
     }
 
-    function _swapTokenForBUSD(address to, uint256 tokenAmount) private {
-        _isSwap = true;
+    function _swapTokenForBUSD(address to, uint256 tokenAmount) private lockSwap {
         IERC20 busdToken = comptroller.getBUSD();
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
 
@@ -869,11 +848,9 @@ contract SMT is Context, IBEP20, Ownable {
             to,
             block.timestamp
         );
-        _isSwap = false;
     }
 
-    function _swapTokenForBNB(address to, uint256 tokenAmount) private {
-        _isSwap = true;
+    function _swapTokenForBNB(address to, uint256 tokenAmount) private lockSwap{
         IUniswapV2Router02 uniswapV2Router = comptroller.getUniswapV2Router();
 
         // generate the uniswap pair path of token -> busd
@@ -890,7 +867,6 @@ contract SMT is Context, IBEP20, Ownable {
             to,
             block.timestamp
         );
-        _isSwap = false;
     }
 }
 

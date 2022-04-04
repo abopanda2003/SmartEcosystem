@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import '../libs/IBEP20.sol';
 
-interface ISmartTokenCash is IERC20 {
+interface ISmartTokenCash is IBEP20 {
     function burn(uint256 amount) external; 
 }

@@ -38,12 +38,12 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
   /// @dev Total BUSD rewards
   uint256 public totalRevenue;
-
   /// @dev Total Swapped BUSD
   uint256 public totalSwapped;
-
   /// @dev Total Burned SMTC
   uint256 public totalBurned;
+  /// @dev Current phase of golden tree
+  uint256 public currentPhase;
 
   /// @dev Growth Balance Mapping
   /// user address => Growth Balance
@@ -51,6 +51,10 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
   /// @dev Growth Balance share percentage
   uint16[8] public growthShare;
+
+  /// @dev phase info
+  uint256[10] public phaseRewards;
+  uint256[10] public phaseThresold;
 
   address[] _rewardsDistributors;
 
@@ -60,6 +64,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
   event RewardSwapped(uint256 smtAmount, uint256 busdAmount);
   event Growth(uint256 amount, address account);
   event ReferralGrowth(uint256 amount, address account, address referral, uint level);
+  event UpgradeTreePhase(uint256 phaseNumber);
 
   function initialize(address _comp, address _smtcToken) public initializer {
 		__Ownable_init();
@@ -70,7 +75,9 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     swapEnabled = true;
     limitPerSwap = 1000 * 1e18;
     
-    growthShare = [6500, 500, 500, 500, 500, 500, 500, 500];
+    growthShare = [uint16(6500), 500, 500, 500, 500, 500, 500, 500];
+    phaseRewards = [uint256(0), 1e18, 1e19, 5e19, 1e20, 5e20, 1e21, 5e21, 1e22, 84e21];
+    phaseThresold = [uint256(1), 19, 271, 999, 5786, 38547, 774503, 1855700, 33579113, 63745062];
 
     addValue(address(this));
     addValue(msg.sender);
@@ -151,7 +158,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     require(amount <= smtcBalance, "GoldenTreePool#buySmtc: insufficient SMTC balance");
     require(busdBalance > 0, "GoldenTreePool#buySmtc: insufficient BUSD balance");
 
-    IERC20(smtcToken).transferFrom(msg.sender, address(this), amount);
+    ISmartTokenCash(smtcToken).transferFrom(msg.sender, address(this), amount);
     smtcToken.burn(amount);
 
     uint256 busdAmount = amount * thresholdPrice() / 1e18;
@@ -193,11 +200,14 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     );
     uint256 amount = busdToken.balanceOf(address(this)) - beforeBalance;
 
-    totalRevenue += amount;
-
     emit RewardSwapped(smtBalance, amount);
   }
 
+  function distributeToNobleLeaders(uint256 phase) internal {
+    uint256 smtcRewards = phaseRewards[phase-1];
+    ISmartAchievement ach = comptroller.getSmartAchievement();
+    ach.distributeToNobleLeaders(smtcRewards);
+  }
 
   /**
    * notify rewards to golden tree pool from smt token
@@ -222,7 +232,6 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     busdpath[1] = address(busdToken);
 
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
-
     uint256 busdAmount = _uniswapV2Router.getAmountsOut(amount, busdpath)[1];
 
     // Add growth balance for from account
@@ -234,22 +243,30 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     for(uint i = 0 ; i < growthShare.length; i++) {
       uint16 percent = growthShare[i];
       if(percent > 0 && ref != address(0x0)) {
-        uint256 shareAmount = busdAmount * percent / 10_000;
-      
+        uint256 shareAmount = busdAmount * percent / 10_000;      
         if(i == 0) {
-          growthBalances[ref] = growthBalances[ref] + shareAmount;
+          increaseGrowth(ref, shareAmount);
+          // growthBalances[ref] = growthBalances[ref] + shareAmount;
           emit Growth(shareAmount, ref);
         } else {
           uint256 ladderLevel = smartArmy.licenseLevelOf(ref);
           if(ladderLevel >= i) {
-            growthBalances[ref] = growthBalances[ref] + shareAmount;
+            increaseGrowth(ref, shareAmount);
+            // growthBalances[ref] = growthBalances[ref] + shareAmount;
             emit ReferralGrowth(shareAmount, ref, account, i);
           }
         }
-      } 
+      }
       ref = smartLadder.sponsorOf(ref);
     }
-    
+
+    totalRevenue += busdAmount;
+    uint256 newPhase = currentPhaseOfGoldenTree();
+    if(currentPhase < newPhase){
+      distributeToNobleLeaders(newPhase);
+      currentPhase = newPhase;      
+      emit UpgradeTreePhase(newPhase);
+    }
     emit RewardAdded(amount, account);
   }
 
@@ -257,13 +274,11 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Increase Growth Token
    */
   function increaseGrowth(address account, uint256 amount) internal {
-    uint256 old = growthBalances[account];
-    uint256 newBalance = old + amount;
-
-    growthBalances[account] = newBalance;
+    uint256 old = growthBalanceOf(account);
+    growthBalances[account] += amount;
     
     ISmartAchievement ach = comptroller.getSmartAchievement();
-    ach.notifyGrowth(account, old, newBalance);
+    ach.notifyGrowth(account, old, growthBalanceOf(account));
   }
   
   /**
@@ -271,7 +286,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    */
   function smtcTotalSupply() public view returns(uint256) {
     return smtcToken.totalSupply();
-  } 
+  }
 
   /**
    * Get Threshold Price 
@@ -286,16 +301,36 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Get Groth Point
    * (Growth balance) / (1000 BUSD)
    */
-  function growthPoint(address account) public view returns(uint256) {
+  function growthBalanceOf(address account) public view returns(uint256) {
     return growthBalances[account] / 1000;
   }
 
+  function contributionOf(address account) public view returns(uint256) {    
+    return growthBalanceOf(account) * 100 / currentTotalGrowth();
+  }
+
+  function currentTotalGrowth() public view returns(uint256) {
+    return totalRevenue / 1000;
+  }
+
+  function currentPhaseOfGoldenTree() public view returns(uint256) {
+    uint256 totalGrowth = currentTotalGrowth();
+    if(totalGrowth < phaseThresold[0]) return 0;
+
+    uint256 i;
+    for(i=0; i<phaseThresold.length; i++){
+      if(totalGrowth < phaseThresold[i]) break;
+    }
+    if(i == phaseThresold.length) return i;
+    return i+1;
+  }
+
   function indexOf(address value) public view returns(uint) {
-      uint i = 0;
-      while (_rewardsDistributors[i] != value) {
-          i++;
-      }
-      return i;
+    uint i = 0;
+    while (_rewardsDistributors[i] != value) {
+        i++;
+    }
+    return i;
   }
 
   function contain(address value) public view returns(bool) {
@@ -348,7 +383,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
       || msg.sender == address(comptroller.getGoldenTreePool())
       || msg.sender == address(comptroller.getSmartBridge())
       || msg.sender == owner(),
-      "only smart members can access to this function");
+      "only smart members can access to this function");      
       _;
   }
 } 

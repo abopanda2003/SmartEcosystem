@@ -166,7 +166,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     string memory _name,
     uint256 _price,
     uint256 _ladderLevel,
-    string memory _tokenUri,
     bool _isValid
   ) 
     public 
@@ -278,7 +277,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     uint256 userLicenseId = userLicenses[_msgSender()];
     UserLicense storage license = licenses[userLicenseId];
     require(license.status == LicenseStatus.Active, "SmartArmy#liquidateLicense: no license yet");
-    require(license.expireAt <= block.timestamp, "SmartArmy#liquidateLicense: still active");
+    // require(license.expireAt <= block.timestamp, "SmartArmy#liquidateLicense: still active");
 
     uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(_msgSender(), license.lpLocked);
     require(smtAmount > 0, "SmartArmy#liquidateLicense: failed to refund SMT");

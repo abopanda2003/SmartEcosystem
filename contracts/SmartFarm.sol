@@ -226,6 +226,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
   /** @dev Updates the reward for a given address, before executing function */
   modifier updatePassiveReward(address account) {
+    _;
     // Setting of global vars
     uint256 newRewardPerToken = rewardPerToken();
     // If statement protects against loss in initialisation case
@@ -239,16 +240,15 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
         uInfo.rewardPerTokenPaid = newRewardPerToken;
       }
     }
-    _;
   }
 
   modifier updateFixedReward(address account) {
+      _;
       if (account != address(0)) {
           UserInfo storage uInfo = userInfo[account];
           uInfo.rewards = earned(account);
           uInfo.lastUpdated = block.timestamp;
       }
-      _;
   }
 
   function reserve(address account) public view returns (uint256) {
@@ -349,6 +349,11 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     uint256 liquidity = _tranferSmtToContract(_msgSender(), account, amount);
     require(liquidity > 0, "SmartFarm#stakeSMT: failed to add liquidity");
 
+    if(amount > 100) {
+      ISmartAchievement ach = comptroller.getSmartAchievement();
+      ach.addFarmDistributor(_msgSender());
+    }
+
     UserInfo storage uInfo = userInfo[account];
     uInfo.balance = uInfo.balance + liquidity;
     uInfo.tokenBalance = uInfo.tokenBalance + amount;
@@ -386,6 +391,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     } else {
       require(lpLocked + lpAmount <= balanceOf(account), "SmartFarm#withdrawSMT: withdraw amount is invalid");
     }
+
+    ISmartAchievement ach = comptroller.getSmartAchievement();
+    if(ach.isFarmer(_msgSender()))
+      ach.removeFarmDistributor(_msgSender());
 
     UserInfo storage uInfo = userInfo[account];
 
@@ -436,7 +445,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   ) private returns(uint) {
     IERC20 smtToken = comptroller.getSMT();
     IERC20 busdToken = comptroller.getBUSD();
-    ISmartArmy smartArmy = comptroller.getSmartArmy();
   
     // Transfer SMT token from user to contract
     uint256 beforeBalance = smtToken.balanceOf(address(this));
