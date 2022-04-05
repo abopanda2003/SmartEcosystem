@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 // import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
+import '@openzeppelin/contracts/access/Ownable.sol';
 
 // import './libs/StableMath.sol';
 import './libs/TransferHelper.sol';
@@ -28,7 +28,7 @@ import "./interfaces/ISmartLadder.sol";
 import "./interfaces/ISmartArmy.sol";
 import 'hardhat/console.sol';
 
-contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievement {
+contract SmartAchievement is Ownable, ISmartAchievement {
   // using StableMath for uint256;
   // using SafeMath for uint256;
   // using EnumerableSet for EnumerableSet.AddressSet;
@@ -89,16 +89,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   event RewardPaid(address indexed user, uint256 reward);
   event RewardSwapped(uint256 reward);
 
-
-  function initialize(address _comp, address _smtcToken) public initializer {
-		__Ownable_init();
-    __SmartAchievement_init_unchained(_comp, _smtcToken);
-  }
-
-
-  function __SmartAchievement_init_unchained(address _comp, address _smtcToken)
-    internal
-    initializer
+  constructor (address _comp, address _smtcToken)
   {
     comptroller = ISmartComp(_comp);
     smtcTokenAddress = _smtcToken;
@@ -172,9 +163,6 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     uint256[9] memory smtcSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
     supTotalSupply = [smtSupply, smtcSupply];
   }
-
-  function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
 
   /** @dev Updates the reward for a given address, before executing function */
   modifier updateReward(address _account) {
@@ -619,7 +607,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     emit NobilityTypeUpdated(id, _type);
   }
 
-  /**
+  /** 
    * Swap and distribute SMT token to BNB
    */
   function swapDistribute() 
