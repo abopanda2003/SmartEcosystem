@@ -209,7 +209,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     string memory _username,
     string memory _telegram,
     string memory _tokenUri
-  ) external {
+  ) public {
     require(licenseOf(msg.sender).status == LicenseStatus.None
       || licenseOf(msg.sender).status == LicenseStatus.Expired, "SmartArmy#startLicense: already started");
 
@@ -249,8 +249,9 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Activate License
    * 
    */
-  function activateLicense() external {
-    UserLicense storage license = licenses[userLicenses[msg.sender]];
+  function activateLicense() public {
+    address sender = tx.origin;
+    UserLicense storage license = licenses[userLicenses[sender]];
     require(license.status == LicenseStatus.Pending, "SmartArmy#activateLicense: not registered");
 
     LicenseType memory _type = licenseTypes[license.level];
@@ -258,47 +259,64 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
 
     // Transfer SMT token for License type to this contract
     uint256 smtAmount = _type.price;
-    uint amount = _tranferSmtToContract(_msgSender(), smtAmount);
-    uint256 liquidity = comptroller.getSmartFarm().stakeSMT(_msgSender(), amount);
+    uint amount = _tranferSmtToContract(sender, smtAmount);
+    uint256 liquidity = comptroller.getSmartFarm().stakeSMT(sender, amount);
     require(liquidity > 0, "SmartArmy#activateLicense: failed to add liquidity");
 
     license.activeAt = block.timestamp;
     license.lpLocked = liquidity;
     license.status  = LicenseStatus.Active;
 
-    emit ActivatedLicense(_msgSender(), license);
+    emit ActivatedLicense(sender, license);
+  }
+
+  function upgradeLicense() public {
+    UserLicense memory currentLicense = licenseOf(tx.origin);
+    UserPersonal memory currentPersonalInfo = userInfo[tx.origin];
+
+    liquidateLicense();
+    registerLicense(
+      currentLicense.level, 
+      currentPersonalInfo.sponsor, 
+      currentPersonalInfo.username, 
+      currentPersonalInfo.telegram, 
+      currentLicense.tokenUri
+    );
+
+    activateLicense();
   }
 
   /**
    * Liquidate License
    *  
    */
-  function liquidateLicense() external {
-    uint256 userLicenseId = userLicenses[_msgSender()];
+  function liquidateLicense() public {
+    address sender = tx.origin;
+    uint256 userLicenseId = userLicenses[sender];
     UserLicense storage license = licenses[userLicenseId];
     require(license.status == LicenseStatus.Active, "SmartArmy#liquidateLicense: no license yet");
     // require(license.expireAt <= block.timestamp, "SmartArmy#liquidateLicense: still active");
 
-    uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(_msgSender(), license.lpLocked);
+    uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(sender, license.lpLocked);
     require(smtAmount > 0, "SmartArmy#liquidateLicense: failed to refund SMT");
 
-    _tranferSmtToUser(_msgSender(), smtAmount);
+    _tranferSmtToUser(sender, smtAmount);
     
     //remove license
     license.owner = address(0x0);
     license.lpLocked = 0;
     license.status = LicenseStatus.Expired;
 
-    userLicenses[_msgSender()] = 0;
+    userLicenses[sender] = 0;
 
-    emit LiquidateLicense(_msgSender(), license);
+    emit LiquidateLicense(sender, license);
   }
 
   /**
    * Extend License
    *  
    */
-  function extendLicense() external payable {
+  function extendLicense() public payable {
     uint256 userLicenseId = userLicenses[_msgSender()];
     UserLicense storage license = licenses[userLicenseId];
 

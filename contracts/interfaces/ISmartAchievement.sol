@@ -17,7 +17,7 @@ interface ISmartAchievement {
         uint256[] chestRewards; // 0: SMT,  1: SMTC
         uint256 checkRewardUpdated;
         uint256[] surprizeRewards; // 0: SMT, 1: SMTC
-        uint256 nobleRewards;
+        uint256 nobleRewards;        
         uint256 farmRewards;
     }
 

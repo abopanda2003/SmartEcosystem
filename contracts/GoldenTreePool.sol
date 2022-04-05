@@ -29,8 +29,6 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
   // using EnumerableSet for EnumerableSet.AddressSet;
 
   /// @dev Token Addresses
-  ISmartTokenCash public smtcToken;
-
   ISmartComp public comptroller;
 
   bool public swapEnabled;
@@ -66,11 +64,10 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
   event ReferralGrowth(uint256 amount, address account, address referral, uint level);
   event UpgradeTreePhase(uint256 phaseNumber);
 
-  function initialize(address _comp, address _smtcToken) public initializer {
+  function initialize(address _comp) public initializer {
 		__Ownable_init();
 
     comptroller = ISmartComp(_comp);
-    smtcToken = ISmartTokenCash(_smtcToken);
 
     swapEnabled = true;
     limitPerSwap = 1000 * 1e18;
@@ -153,12 +150,13 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     require(amount > 0, "GoldenTreePool#buySmtc: Invalid zero amount");
     
     IERC20 busdToken = comptroller.getBUSD();
+    ISmartTokenCash smtcToken = comptroller.getSMTC();
     uint256 smtcBalance = smtcToken.balanceOf(address(this));
     uint256 busdBalance = busdToken.balanceOf(address(this));
     require(amount <= smtcBalance, "GoldenTreePool#buySmtc: insufficient SMTC balance");
     require(busdBalance > 0, "GoldenTreePool#buySmtc: insufficient BUSD balance");
 
-    ISmartTokenCash(smtcToken).transferFrom(msg.sender, address(this), amount);
+    smtcToken.transferFrom(msg.sender, address(this), amount);
     smtcToken.burn(amount);
 
     uint256 busdAmount = amount * thresholdPrice() / 1e18;
@@ -235,6 +233,8 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
     uint256 busdAmount = _uniswapV2Router.getAmountsOut(amount, busdpath)[1];
 
+
+
     // Add growth balance for from account
     // distribute growth token to referral
     address ref = account;
@@ -286,6 +286,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Get Total Supply of SMTC token
    */
   function smtcTotalSupply() public view returns(uint256) {
+    ISmartTokenCash smtcToken = comptroller.getSMTC();
     return smtcToken.totalSupply();
   }
 

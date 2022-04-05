@@ -34,7 +34,6 @@ contract SmartAchievement is Ownable, ISmartAchievement {
   // using EnumerableSet for EnumerableSet.AddressSet;
 
   ISmartComp public comptroller;
-  address public smtcTokenAddress;
 
   bool public swapEnabled;
   uint256 public limitPerSwap;
@@ -89,10 +88,9 @@ contract SmartAchievement is Ownable, ISmartAchievement {
   event RewardPaid(address indexed user, uint256 reward);
   event RewardSwapped(uint256 reward);
 
-  constructor (address _comp, address _smtcToken)
+  constructor (address _comp)
   {
     comptroller = ISmartComp(_comp);
-    smtcTokenAddress = _smtcToken;
 
     totalNobilityTypes = 8;
 
@@ -232,7 +230,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 balance = _mapRewards[msg.sender].nobleRewards;
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
     require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
-    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
     _mapRewards[msg.sender].nobleRewards -= _amount;
     allocatedTotalChestSMTReward -= _amount;
   }
@@ -241,7 +239,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 balance = _mapRewards[msg.sender].farmRewards;
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
     require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
-    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
     _mapRewards[msg.sender].farmRewards -= _amount;
     allocatedTotalChestSMTReward -= _amount;
   }
@@ -259,7 +257,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 balance = _mapRewards[msg.sender].surprizeRewards[1];
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
     require(allocatedTotalSurprizeSMTCReward > 0, "allocated total reward amount can't be zero");
-    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
     _mapRewards[msg.sender].surprizeRewards[1] -= _amount;
     allocatedTotalSurprizeSMTCReward -= _amount;
   }

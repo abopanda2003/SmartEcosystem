@@ -9,6 +9,8 @@ import './ISmartFarm.sol';
 import './IGoldenTreePool.sol';
 import './ISmartAchievement.sol';
 import './IUniswapRouter.sol';
+import "./ISmartTokenCash.sol";
+
 
 // Smart Comptroller Interface
 interface ISmartComp {
@@ -17,6 +19,7 @@ interface ISmartComp {
     function getBUSD() external view returns(IERC20);
     function getWBNB() external view returns(IERC20);
 
+    function getSMTC() external view returns(ISmartTokenCash);
     function getUniswapV2Router() external view returns(IUniswapV2Router02);
     function getUniswapV2Factory() external view returns(address);
     function getSmartArmy() external view returns(ISmartArmy);

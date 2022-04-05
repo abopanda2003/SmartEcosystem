@@ -22,6 +22,7 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   ISmartFarm public smartFarm;
   IGoldenTreePool public goldenTreePool;
   ISmartAchievement public smartAchievement;
+  ISmartTokenCash public smtcToken;
   address public smartBridge;
 
   IUniswapV2Router02 public uniswapV2Router;
@@ -71,6 +72,10 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   
   function getSMT() external override view returns(IERC20) {
     return smtToken;
+  }
+
+  function getSMTC() external override view returns(ISmartTokenCash) {
+    return smtcToken;
   }
 
   function getBUSD() external override view returns(IERC20) {
@@ -129,6 +134,14 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     */
   function setBUSD(address _address) external onlyOwner {
       busdToken = IERC20(_address);
+  }
+
+  /**
+    * @notice Sets a new BUSD contract for the comptroller
+    * 
+    */
+  function setSMTC(address _address) external onlyOwner {
+      smtcToken = ISmartTokenCash(_address);
   }
 
   /**
