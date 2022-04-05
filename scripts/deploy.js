@@ -122,7 +122,7 @@ async function main() {
     const upgrades = hre.upgrades;
 
     dim('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
-    dim('Smart Ecosystem Contracts - Deploy Script');
+    dim('Welcome DDa Hyok - Deploy Script');
     dim('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n');
 
     dim(`Network: ${chainName(chainId)}`);
