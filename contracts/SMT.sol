@@ -547,9 +547,9 @@ contract SMT is Context, IBEP20, Ownable {
         ISmartArmy license = comptroller.getSmartArmy();
         address sender = address(tx.origin);
         uint256 amount = _balances[sender] - _mapSurprizeRewardPaid[sender];
-        if(license.isActiveLicense(sender) &&  amount >= 1000) {
+        if(license.isActiveLicense(sender) &&  amount >= 1e21) {
             ISmartAchievement ach = comptroller.getSmartAchievement();
-            ach.distributeSurprizeReward(sender);
+            ach.distributeSurprizeReward(sender, amount/1e21);
             _mapSurprizeRewardPaid[sender] += amount;
         }
     }

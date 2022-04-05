@@ -53,33 +53,35 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
   mapping(address => uint256) public userRewardPerTokenPaid;
   mapping(address => uint256) public rewards;
   
-  mapping(address => uint256) public chestSMTRewards;
-  mapping(address => uint256) public chestSMTCRewards;
-  mapping(address => uint256) public checkRewardUpdated;
-  mapping(address => uint256) public nobleRewards; // Noble SMTC Reward
-  mapping(address => uint256) public farmRewards; // Farmer SMTC Reward
-  mapping(address => uint256) public supSmtRewards; // Surprize Reward
-  mapping(address => uint256) public supSmtcRewards; // Surprize Reward
+  mapping(address => UserInfo) public _mapRewards;
+
+  mapping(uint256 => uint256[]) public _mapChestStmSupply;
+  mapping(uint256 => uint256[]) public _mapChestStmcSupply;
   
   uint256 private randNonce;
 
   // Nobility Types mapping
   mapping(uint256 => NobilityType) public nobilityTypes;
   uint256 public totalNobilityTypes;
-  
   uint256 public totalRewardShares;
 
   address[] _farmers;
   address[] _nobleLeaders;
 
   uint256[][9] supPool;
-  uint256[9] supTotalSupply;
+  uint256[][9] supTotalSupply;
 
 
   // Account => Nobility type
   mapping(address => uint256) public userNobilities;
   // Nobility type => the number of whom owns it.
   mapping(uint256 => uint256) public userNobilityCounts;
+
+  uint256 allocatedTotalChestSMTReward = 13296e20;
+  uint256 allocatedTotalSurprizeSMTReward = 9e23;
+
+  uint256 allocatedTotalChestSMTCReward = 7.692e22;
+  uint256 allocatedTotalSurprizeSMTCReward = 9e22;
 
   event NobilityTypeUpdated(uint256 id, NobilityType _type);
   event UserNobilityUpgraded(address indexed account, uint256 level);
@@ -106,41 +108,69 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     // initialize nobility types
     _updateNobilityType(1, 'Folks', 1, 10, 2, 281e6,
       [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    );
+
+    _mapChestStmSupply[1] = [uint256(0), 0, 0, 0, 0, 0, 0];
+    _mapChestStmcSupply[1] = [uint256(0), 0, 0, 0];
 
     _updateNobilityType(2, 'Baron', 10, 15, 5,  41e6,
-      [uint256(1e16), 1e17, 1e18, 0, 0, 0, 0, 0, 0, 0],
-      [uint256(1e13), 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,0 ,0, 0]);
+      [uint256(1e13), 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,0 ,0, 0],
+      [uint256(1e16), 1e17, 1e18, 0, 0, 0, 0, 0, 0, 0]
+    );
+
+    _mapChestStmSupply[2] = [uint256(2e9), 1e8, 1e7, 1e6, 1e5, 1e4, 1e3];
+    _mapChestStmcSupply[2] = [uint256(1e5), 1e4, 1e3, 0];
 
     _updateNobilityType(3, 'Count',  50,  20, 10,  41e5,
-      [uint256(2.5e16), 2.5e17, 2.5e18, 0, 0, 0, 0, 0, 0, 0], 
-      [uint256(2.5e13), 2.5e14, 2.5e15, 2.5e16, 2.5e17, 2.5e18, 2.5e19, 0, 0, 0]);
+      [uint256(2.5e13), 2.5e14, 2.5e15, 2.5e16, 2.5e17, 2.5e18, 2.5e19, 0, 0, 0],
+      [uint256(2.5e16), 2.5e17, 2.5e18, 0, 0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[3] = [uint256(1e8), 1e8, 1e7, 1e6, 1e5, 1e4, 1e3];
+    _mapChestStmcSupply[3] = [uint256(1e5), 1e4, 1e3, 0];
 
     _updateNobilityType(4, 'Viscount', 100,  25, 20, 1e5,
-      [uint256(5e16), 5e17, 5e18, 0, 0, 0, 0, 0, 0, 0],
-      [uint256(5e14), 5e15, 5e16, 5e17, 5e18, 5e19, 0 ,0, 0, 0]);
+      [uint256(5e14), 5e15, 5e16, 5e17, 5e18, 5e19, 0 ,0, 0, 0],
+      [uint256(5e16), 5e17, 5e18, 0, 0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[4] = [uint256(41e6), 1e7, 1e6, 1e5, 1e4, 1e3, 0];
+    _mapChestStmcSupply[4] = [uint256(1e5), 1e4, 1e3, 0];
     
     _updateNobilityType(5, 'Earl',     200,  30, 40,  10000,
-      [uint256(8.5e16), 8.5e17, 8.5e18, 0 ,0, 0, 0, 0, 0, 0],
-      [uint256(8.5e15), 8.5e16, 8.5e17, 8.5e18, 8.5e19, 0 ,0 ,0 ,0, 0]);
+      [uint256(8.5e15), 8.5e16, 8.5e17, 8.5e18, 8.5e19, 0 ,0 ,0 ,0, 0],
+      [uint256(8.5e16), 8.5e17, 8.5e18, 0 ,0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[5] = [uint256(4.1e6), 1e6, 1e5, 1e4, 1e3, 0, 0];
+    _mapChestStmcSupply[5] = [uint256(1e5), 1e4, 1e3, 0];
 
     _updateNobilityType(6, 'Duke',     500,  35, 100,   1000,
-      [uint256(2.5e17), 2.5e18, 2.5e19, 0, 0, 0, 0, 0, 0, 0],
-      [uint256(2.5e16), 2.5e17, 2.5e18, 2.5e19, 2.5e20, 0, 0, 0, 0, 0]);
+      [uint256(2.5e16), 2.5e17, 2.5e18, 2.5e19, 2.5e20, 0, 0, 0, 0, 0],
+      [uint256(2.5e17), 2.5e18, 2.5e19, 0, 0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[6] = [uint256(4.1e5), 1e5, 1e4, 1e3, 1e2, 0, 0];
+    _mapChestStmcSupply[6] = [uint256(1e4), 1e3, 1e2, 0];
 
     _updateNobilityType(7, 'Prince',   1000, 40, 300, 100,
-      [uint256(5e17), 5e18, 5e19, 0, 0, 0, 0, 0, 0, 0], 
-      [uint256(5e17), 5e18, 5e19, 5e20, 0, 0, 0, 0, 0, 0]);
+      [uint256(5e17), 5e18, 5e19, 5e20, 0, 0, 0, 0, 0, 0],
+      [uint256(5e17), 5e18, 5e19, 0, 0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[7] = [uint256(4.1e4), 1e4, 1e3, 1e2, 0, 0, 0];
+    _mapChestStmcSupply[7] = [uint256(1e4), 1e3, 1e2, 0];
 
     _updateNobilityType(8, 'King',  2000,  50,  700,  10,
-      [uint256(1e18), 1e18, 1e19, 1e20, 0, 0, 0, 0, 0, 0],
-      [uint256(5e18), 5e19, 5e20, 5e21, 0, 0, 0, 0, 0, 0]);
+      [uint256(5e18), 5e19, 5e20, 5e21, 0, 0, 0, 0, 0, 0],
+      [uint256(1e18), 1e18, 1e19, 1e20, 0, 0, 0, 0, 0, 0]
+    );
+    _mapChestStmSupply[8] = [uint256(4.2e3), 1e3, 1e2, 10, 0, 0, 0];
+    _mapChestStmcSupply[8] = [uint256(4.2e3), 1e3, 1e2, 10];
 
     uint256[9] memory smt = [uint256(1e22), 1e21, 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14]; // SMT
     uint256[9] memory smtc = [uint256(1e21), 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14, 1e13];  // SMTC
     supPool = [smt, smtc];
 
-    supTotalSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
+    uint256[9] memory smtSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
+    uint256[9] memory smtcSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
+    supTotalSupply = [smtSupply, smtcSupply];
   }
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
@@ -192,53 +222,58 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     }
   }
 
-  function claimChestReward() external override {
-    // update chest rewards before claim
-    updateChestReward(msg.sender);
+  function claimChestSMTReward(uint256 _amount) external override {
+    uint256 balance = _mapRewards[msg.sender].chestRewards[0];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+    require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
+    TransferHelper.safeTransfer(address(comptroller.getSMT()), msg.sender, _amount);
+    _mapRewards[msg.sender].chestRewards[0] -= _amount;
+    allocatedTotalChestSMTReward -= _amount;
+  }
 
-    if(chestSMTRewards[msg.sender] > 0) {
-      TransferHelper.safeTransfer(address(comptroller.getSMT()), msg.sender, chestSMTRewards[msg.sender]);
-      chestSMTRewards[msg.sender] = 0;
-    }
-
-    if(chestSMTCRewards[msg.sender] > 0) {
-      TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, chestSMTCRewards[msg.sender]);
-      chestSMTCRewards[msg.sender] = 0;
-    }
+  function claimChestSMTCReward(uint256 _amount) external override {
+    uint256 balance = _mapRewards[msg.sender].chestRewards[1];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+    require(allocatedTotalChestSMTCReward > 0, "allocated total reward amount can't be zero");
+    TransferHelper.safeTransfer(address(comptroller.getSMT()), msg.sender, _amount);
+    _mapRewards[msg.sender].chestRewards[1] -= _amount;
+    allocatedTotalChestSMTCReward -= _amount;
   }
 
   function claimNobleReward(uint256 _amount) external override {
-    uint256 balance = nobleRewards[msg.sender];
+    uint256 balance = _mapRewards[msg.sender].nobleRewards;
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
-
+    require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
     TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
-    nobleRewards[msg.sender] = nobleRewards[msg.sender] - _amount;
+    _mapRewards[msg.sender].nobleRewards -= _amount;
+    allocatedTotalChestSMTReward -= _amount;
   }
 
   function claimFarmReward(uint256 _amount) external override {
-    uint256 balance = farmRewards[msg.sender];
+    uint256 balance = _mapRewards[msg.sender].farmRewards;
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
-
-    if(farmRewards[msg.sender] > 0) {
-      TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
-      farmRewards[msg.sender] = farmRewards[msg.sender] - _amount;
-    }
+    require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
+    TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
+    _mapRewards[msg.sender].farmRewards -= _amount;
+    allocatedTotalChestSMTReward -= _amount;
   }
 
   function claimSurprizeSMTReward(uint256 _amount) external override {
-    uint256 balance = supSmtRewards[msg.sender];
+    uint256 balance = _mapRewards[msg.sender].surprizeRewards[0];
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
-
+    require(allocatedTotalSurprizeSMTReward > 0, "allocated total reward amount can't be zero");
     TransferHelper.safeTransfer(address(comptroller.getSMT()), msg.sender, _amount);
-    supSmtRewards[msg.sender] = supSmtRewards[msg.sender] - _amount;
+    _mapRewards[msg.sender].surprizeRewards[0] -= _amount;
+    allocatedTotalSurprizeSMTReward -= _amount;
   }
 
   function claimSurprizeSMTCReward(uint256 _amount) external override {
-    uint256 balance = supSmtcRewards[msg.sender];
+    uint256 balance = _mapRewards[msg.sender].surprizeRewards[1];
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
-
+    require(allocatedTotalSurprizeSMTCReward > 0, "allocated total reward amount can't be zero");
     TransferHelper.safeTransfer(smtcTokenAddress, msg.sender, _amount);
-    supSmtcRewards[msg.sender] = supSmtcRewards[msg.sender] - _amount;
+    _mapRewards[msg.sender].surprizeRewards[1] -= _amount;
+    allocatedTotalSurprizeSMTCReward -= _amount;
   }
 
 
@@ -341,10 +376,10 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     
     if(portions == 0) return;
     uint256 unitRewards = _amount / portions;
-    for(uint256 i=0; i<_nobleLeaders.length; i++){
+    for(uint256 i=0; i<_nobleLeaders.length; i++) {
       address user = _nobleLeaders[i];
       uint256 nobilityRewards = nobilityOf(user).goldenTreeRewards;
-      nobleRewards[user] = nobilityRewards * unitRewards / 10;
+      _mapRewards[user].nobleRewards += nobilityRewards * unitRewards / 10;
     }
   }
 
@@ -359,25 +394,48 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
 
     for(uint256 i=0; i<_farmers.length; i++){
       address user = _farmers[i];
-      farmRewards[user] = unitRewards;
+      _mapRewards[user].farmRewards += unitRewards;
     }
+  }
+
+  function isPossibleSurprizeReward() 
+            public view returns(bool) {
+
+    uint256 i;
+    for(i=0; i<2; i++) {
+      uint256 j;
+      for(j=0; j<supTotalSupply[i].length; j++)
+        if(supTotalSupply[i][j] > 0) break;      
+      if(j < supTotalSupply[i].length) break;
+    }
+    if(i == 2) return false;
+    return true;
   }
 
   /**
    * @dev distribute surprize rewards
    */
-  function distributeSurprizeReward(address _account)
-                    external override onlySmartMember {
-  
-    uint256 seed = uint256(keccak256(abi.encode(block.number, msg.sender, block.timestamp)));
-    uint256 poolIndex = _getRandomNumebr(seed, supTotalSupply.length);
-    uint256 coinIndex = poolIndex % 2;
-    
-    uint256 selectedReward = supPool[coinIndex][poolIndex];
-    if(coinIndex == 0) supSmtRewards[_account] = selectedReward;
-    else supSmtcRewards[_account] = selectedReward;
+  function distributeSurprizeReward(
+    address _account, 
+    uint256 _claims
+  ) external override onlySmartMember {
 
-    supTotalSupply[poolIndex] = supTotalSupply[poolIndex] - 1;
+    if(_mapRewards[_account].surprizeRewards.length <2)
+        _mapRewards[_account].surprizeRewards = new uint256[](2);
+
+    for(uint256 i=0; i<_claims; i++) {
+      for(;isPossibleSurprizeReward();) {
+        uint256 seed = uint256(keccak256(abi.encode(block.number, msg.sender, block.timestamp)));
+        uint256 poolIndex = _getRandomNumebr(seed, supTotalSupply.length);
+        uint256 coinIndex = poolIndex % 2;
+        if(supTotalSupply[coinIndex][poolIndex] > 0) {
+          uint256 selectedReward = supPool[coinIndex][poolIndex];
+          _mapRewards[_account].surprizeRewards[coinIndex] += selectedReward;
+          supTotalSupply[coinIndex][poolIndex] -= 1;
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -413,7 +471,7 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
       }
 
       if(id == 2) { // From Nobility = 2 : Baron Chest rewards start
-        checkRewardUpdated[account] = block.timestamp;
+        _mapRewards[account].checkRewardUpdated = block.timestamp;
       } else if(id > 2) {
         updateChestReward(account);
       }
@@ -423,33 +481,67 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
     return false;
   }
 
-  function updateChestReward(address account) internal {
-    uint256 rewardWeeks = uint256(block.timestamp - checkRewardUpdated[account]) / 7 / 86400;
+  function isPossibleNobilityReward(address account) public view returns(bool) {
+    uint256[] memory smtTotalSupply = _mapChestStmSupply[userNobilities[account]];
+    uint256[] memory smtcTotalSupply = _mapChestStmcSupply[userNobilities[account]];
 
-    for(uint i = 0; i < rewardWeeks; i++) {
-      randNonce = randNonce + 1;
-      (uint256 smtReward, uint256 smtcReward) = getRandomReward(randNonce, userNobilities[account]);
+    uint256 i;
+    for(i=0; i<smtTotalSupply.length; i++)
+      if(smtTotalSupply[i] > 0) break;
 
-      chestSMTRewards[account] = chestSMTRewards[account] + smtReward;
-      chestSMTCRewards[account] = chestSMTCRewards[account] + smtcReward;
+    if(i == smtTotalSupply.length) {
+      for(i=0; i<smtcTotalSupply.length; i++)
+        if(smtcTotalSupply[i] > 0) break;
+      if(i == smtcTotalSupply.length) return false;
     }
-    uint256 weeklyRewards = rewardWeeks * 7 * 86400;
-    checkRewardUpdated[account] = checkRewardUpdated[account] + weeklyRewards;
+    return true;
   }
 
-  function getRandomReward(uint256 nonce, uint256 nobilityType) 
-                        private view returns(uint256, uint256) {
+  function updateChestReward(address account) internal {
+    uint256 rewardWeeks = uint256(block.timestamp - _mapRewards[account].checkRewardUpdated) / 7 / 86400;
+    if(_mapRewards[account].chestRewards.length < 2)
+        _mapRewards[account].chestRewards = new uint256[](2);
+
+    uint256[] memory smtTotalSupply = _mapChestStmSupply[userNobilities[account]];
+    uint256[] memory smtcTotalSupply = _mapChestStmcSupply[userNobilities[account]];
+    for(uint i = 0; i < rewardWeeks; i++) {
+      for(;isPossibleNobilityReward(account);) {
+        randNonce = randNonce + 1;
+        (uint256 coinIndex, uint256 index, uint256 reward) = getChestRandomReward(randNonce, userNobilities[account]);
+        if(coinIndex == 0 && smtTotalSupply[index] > 0) {
+          _mapRewards[account].chestRewards[coinIndex] += reward;
+          _mapChestStmSupply[userNobilities[account]][index] -= 1;
+          break;
+        }
+        if(coinIndex == 1 && smtcTotalSupply[index] > 0) {
+          _mapRewards[account].chestRewards[coinIndex] += reward;
+          _mapChestStmcSupply[userNobilities[account]][index] -= 1;
+          break;
+        }
+      }
+    }
+
+    uint256 weeklyRewards = rewardWeeks * 7 * 86400;
+    _mapRewards[account].checkRewardUpdated += weeklyRewards;
+  }
+
+  function getChestRandomReward(uint256 nonce, uint256 nobilityType) 
+                        private view returns(uint256, uint256, uint256) {
 
     NobilityType memory _type = nobilityTypes[nobilityType];
 
     uint256 seed = uint256(keccak256(abi.encode(nonce, msg.sender, block.timestamp)));
-    uint256 chestSMTIndex = _getRandomNumebr(seed, _type.chestSMTRewards.length);
-    uint256 chestSMTCIndex = (chestSMTIndex * 3) % _type.chestSMTCRewards.length;
-
-    return (
-      _type.chestSMTRewards[chestSMTIndex],
-      _type.chestSMTCRewards[chestSMTCIndex]
-    );
+    uint256 coinIndex = _getRandomNumebr(seed, 2);
+    uint256 selectedReward = 0;
+    uint256 selectedIndex = 0;
+    if(coinIndex == 0){
+      selectedIndex = _getRandomNumebr(seed * 7, _type.chestSMTRewardPool.length);
+      selectedReward = _type.chestSMTRewardPool[selectedIndex];
+    } else {
+      selectedIndex = _getRandomNumebr(seed * 7, _type.chestSMTCRewardPool.length);
+      selectedReward = _type.chestSMTCRewardPool[selectedIndex];
+    }
+    return ( coinIndex, selectedIndex, selectedReward );
   }
 
   function _getRandomNumebr(uint256 seed, uint256 mod) view private returns(uint256) {
@@ -508,13 +600,13 @@ contract SmartAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartAchievem
 
     for(uint256 i = 0; i < _chestSMTRewards.length; i++) {
       if(_chestSMTRewards[i] > 0) {
-        _type.chestSMTRewards.push(_chestSMTRewards[i]);
+        _type.chestSMTRewardPool.push(_chestSMTRewards[i]);
       }
     }
 
     for(uint256 j = 0; j < _chestSMTCRewards.length; j++) {
       if(_chestSMTCRewards[j] > 0) {
-        _type.chestSMTCRewards.push(_chestSMTCRewards[j]);
+        _type.chestSMTCRewardPool.push(_chestSMTCRewards[j]);
       }
     }
 
