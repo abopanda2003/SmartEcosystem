@@ -9,6 +9,7 @@ interface ISmartArmy {
         uint256  price;        // 100, 1000, 5000, 10,000
         uint256  ladderLevel;  // Level of referral system with this license
         uint256  duration;     // default 6 months
+        uint256  portions;
         bool     isValid;
     }
 
@@ -47,11 +48,13 @@ interface ISmartArmy {
     }
 
     function licenseOf(address account) external view returns(UserLicense memory);
+    function licensePortionOf(address account) external view returns(uint256);
     function licenseIdOf(address account) external view returns(uint256);
     function licenseTypeOf(uint256 level) external view returns(LicenseType memory);
     function lockedLPOf(address account) external view returns(uint256);
     function isActiveLicense(address account) external view returns(bool);
     function isEnabledIntermediary(address account) external view returns(bool);
     function licenseLevelOf(address account) external view returns(uint256);
+    function licensedUsers() external view returns(address[] memory);
     function licenseActiveDuration(address account, uint256 from, uint256 to) external view returns(uint256, uint256);
 }

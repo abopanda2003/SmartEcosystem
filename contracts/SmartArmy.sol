@@ -37,6 +37,8 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
 
   uint256 totalLicenses;
   uint256 licenseIndex;
+  address[] licensedUser;
+
   /// @dev User License Mapping  licenseId => License
   mapping(uint256 => UserLicense) public licenses;
   /// @dev User address => licenseId
@@ -86,10 +88,10 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    */
   function _initLicenseTypes() internal {
     licenseIndex = 1;
-    createLicense("Trial",       100 * 10 ** 18,    1, true);
-    createLicense("Opportunist", 1_000 * 10 ** 18,  3, true);
-    createLicense("Runner",      5_000 * 10 ** 18,  5, true);
-    createLicense("Visionary",   10_000 * 10 ** 18, 7, true);
+    createLicense("Trial",       100 * 10 ** 18,    1,  0, true);
+    createLicense("Opportunist", 1_000 * 10 ** 18,  3,  1, true);
+    createLicense("Runner",      5_000 * 10 ** 18,  5,  2, true);
+    createLicense("Visionary",   10_000 * 10 ** 18, 7,  4, true);
   }
 
   /**
@@ -143,6 +145,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     string memory _name,
     uint256 _price,
     uint256 _ladderLevel,
+    uint256 _portions,
     bool _isValid
   ) public onlyOwner {
     require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
@@ -153,36 +156,11 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     _type.price = _price;
     _type.ladderLevel = _ladderLevel;
     _type.duration = LICENSE_EXPIRE;
+    _type.portions = _portions;
     _type.isValid = _isValid;
     emit LicenseTypeCreated(licenseIndex, _type);
     licenseIndex += 1;
   }
-
-  /**
-   * Update License type
-   */
-  function updateLicenseType(
-    uint256 _level, 
-    string memory _name,
-    uint256 _price,
-    uint256 _ladderLevel,
-    bool _isValid
-  ) 
-    public 
-    onlyOwner 
-  {    
-    require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
-
-    LicenseType storage _type = licenseTypes[_level];
-    _type.level = _level;
-    _type.name  = _name;
-    _type.price = _price;
-    _type.ladderLevel = _ladderLevel;
-    _type.duration = LICENSE_EXPIRE;
-    _type.isValid = _isValid;
-
-    emit LicenseTypeUpdated(_level, _type);
-  } 
 
   /**
    * Update License type
@@ -266,23 +244,24 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     license.activeAt = block.timestamp;
     license.lpLocked = liquidity;
     license.status  = LicenseStatus.Active;
+    
+    addUser(sender);
 
     emit ActivatedLicense(sender, license);
   }
 
-  function upgradeLicense() public {
+  function upgradeLicense(uint256 _level) public {
     UserLicense memory currentLicense = licenseOf(tx.origin);
     UserPersonal memory currentPersonalInfo = userInfo[tx.origin];
 
     liquidateLicense();
     registerLicense(
-      currentLicense.level, 
+      _level, 
       currentPersonalInfo.sponsor, 
       currentPersonalInfo.username, 
       currentPersonalInfo.telegram, 
       currentLicense.tokenUri
     );
-
     activateLicense();
   }
 
@@ -296,7 +275,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     UserLicense storage license = licenses[userLicenseId];
     require(license.status == LicenseStatus.Active, "SmartArmy#liquidateLicense: no license yet");
     // require(license.expireAt <= block.timestamp, "SmartArmy#liquidateLicense: still active");
-
     uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(sender, license.lpLocked);
     require(smtAmount > 0, "SmartArmy#liquidateLicense: failed to refund SMT");
 
@@ -306,6 +284,8 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     license.owner = address(0x0);
     license.lpLocked = 0;
     license.status = LicenseStatus.Expired;
+
+    removeUser(sender);
 
     userLicenses[sender] = 0;
 
@@ -377,10 +357,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Get License of Account
    */
   function licenseOf(address account) 
-    public 
-    view
-    override
-    returns(UserLicense memory) 
+    public view override returns(UserLicense memory) 
   {
       return licenses[userLicenses[account]];
   }
@@ -389,23 +366,29 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Get License ID of Account
    */
   function licenseIdOf(address account) 
-    public 
-    view
-    override
-    returns(uint256)
+    public view override returns(uint256)
   {
       return userLicenses[account];
+  }
+
+  /**
+   * Get license portions of user
+   */
+  function licensePortionOf(address account)
+    public override view returns(uint256) {
+    
+    UserLicense memory license = licenseOf(account);
+    LicenseType memory _type = licenseTypes[license.level];
+    return _type.portions;
   }
 
   /**
    * Get License Type with level
    */
   function licenseTypeOf(uint256 level) 
-    public 
-    view
-    override
-    returns(LicenseType memory)
+    public view override returns(LicenseType memory) 
   {
+
     return licenseTypes[level];
   }
 
@@ -422,15 +405,11 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Get Level of License Type
    */
   function licenseLevelOf(address account) 
-    public 
-    view
-    override
-    returns(uint256) 
+    public view override returns(uint256) 
   {
     if(isActiveLicense(account)) {
       UserLicense memory license = licenseOf(account);
       LicenseType memory _type = licenseTypes[license.level];
-
       return _type.ladderLevel;
     } else {
       return 0;
@@ -441,10 +420,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Check if license is Active status and not expired
    */
   function isActiveLicense(address account) 
-    public 
-    view 
-    override
-    returns(bool)
+    public view override returns(bool)
   {
       UserLicense memory license = licenseOf(account);
       return license.status == LicenseStatus.Active && license.expireAt > block.timestamp;
@@ -457,11 +433,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     address account,
     uint256 from,
     uint256 to
-  )
-    public 
-    view
-    override
-    returns (uint256, uint256) 
+  ) public view override returns (uint256, uint256) 
   {
     UserLicense memory license = licenseOf(account);
 
@@ -472,22 +444,53 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
       // there is no activation duration
       return (0, 0);
     }
-
     return (start, end);
+  }
+
+  function licensedUsers() 
+    external override view returns(address[] memory) 
+  {
+      return licensedUser;
   }
 
   /**
    * Check if enabled intermediary
    */
   function isEnabledIntermediary(address account) 
-    public 
-    view 
-    override
-    returns(bool)
+    public view override returns(bool)
   {
       UserLicense memory license = licenseOf(account);
       return (license.status == LicenseStatus.Pending && block.timestamp > license.startAt + 12 * 3600)
         || license.status == LicenseStatus.Active;
   }
 
+  function indexOf(
+    address[] memory array, 
+    address value
+  ) public pure returns(uint) {
+      uint i = 0;
+      while (array[i] != value) {
+          i++;
+      }
+      return i;
+  }
+
+  function addUser(address account) internal {
+      licensedUser.push(account);
+  }
+
+  function removeUser(address value) internal {
+      require(licensedUser.length > 0, "The array length is zero now.");
+      uint i = indexOf(licensedUser, value);
+      removeIndex(i);
+  }
+
+  function removeIndex(uint256 i) internal {
+      require(licensedUser.length > 0, "The array length is zero now.");
+      while (i<licensedUser.length-1) {
+          licensedUser[i] = licensedUser[i+1];
+          i++;
+      }
+      licensedUser.pop();
+  }
 }

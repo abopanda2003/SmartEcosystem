@@ -511,7 +511,6 @@ contract SMT is Context, IBEP20, Ownable {
         if(!_isLockedFarmingTax) {
             uint256 farmingAmount = amount.mul(_transferFarmingFee).div(100);
             _transfer(sender, _farmingRewardAddress, farmingAmount);
-            distributeSellTaxToFarming(farmingAmount);
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
@@ -533,7 +532,9 @@ contract SMT is Context, IBEP20, Ownable {
     function distributeSellTaxToFarming (uint256 amount) internal {
         require(_farmingRewardAddress != address(0x0), "SmartFarm can't be zero address");
         ISmartFarm(_farmingRewardAddress).notifyRewardAmount(amount);
-    } 
+        ISmartAchievement ach = comptroller.getSmartAchievement();
+        ach.distributeSellTax(amount);
+    }
 
     /**
      * @dev Distribute tax to golden Tree pool as SMT and notify

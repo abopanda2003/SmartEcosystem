@@ -162,23 +162,6 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     supTotalSupply = [smtSupply, smtcSupply];
   }
 
-  /** @dev Updates the reward for a given address, before executing function */
-  modifier updateReward(address _account) {
-    // Setting of global vars
-    uint256 newRewardPerToken = rewardPerToken();
-    // If statement protects against loss in initialisation case
-    if (newRewardPerToken > 0) {
-      rewardPerTokenStored = newRewardPerToken;
-      lastUpdateTime = lastTimeRewardApplicable();
-      // Setting of personal vars based on new globals
-      if (_account != address(0)) {
-        rewards[_account] = earned(_account);
-        userRewardPerTokenPaid[_account] = newRewardPerToken;
-      }
-    }
-    _;
-  }
-
   modifier onlySmartMember() {
     require(
       msg.sender == address(comptroller.getSmartArmy())
@@ -198,15 +181,6 @@ contract SmartAchievement is Ownable, ISmartAchievement {
    * @dev Claims outstanding rewards for the sender.
    * First updates outstanding reward allocation and then transfers.
    */
-  function claimReward() external override updateReward(msg.sender) onlySmartMember {
-    uint256 reward = rewards[msg.sender];
-    if (reward > 0) {
-      rewards[msg.sender] = 0;
-      IWETH(address(comptroller.getWBNB())).withdraw(reward);
-      TransferHelper.safeTransferETH(msg.sender, reward);
-      emit RewardPaid(msg.sender, reward);
-    }
-  }
 
   function claimChestSMTReward(uint256 _amount) external override {
     uint256 balance = _mapRewards[msg.sender].chestRewards[0];
@@ -227,20 +201,22 @@ contract SmartAchievement is Ownable, ISmartAchievement {
   }
 
   function claimNobleReward(uint256 _amount) external override {
-    uint256 balance = _mapRewards[msg.sender].nobleRewards;
+    uint256 balance = _mapRewards[msg.sender].nobleRewards[1];
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
     require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
     TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
-    _mapRewards[msg.sender].nobleRewards -= _amount;
+    _mapRewards[msg.sender].nobleRewards[1] -= _amount;
+    _mapRewards[msg.sender].nobleRewards[0] += _amount;
     allocatedTotalChestSMTReward -= _amount;
   }
 
   function claimFarmReward(uint256 _amount) external override {
-    uint256 balance = _mapRewards[msg.sender].farmRewards;
+    uint256 balance = _mapRewards[msg.sender].farmRewards[1];
     require(balance - _amount >= 0, "The amount to claim exceeds the balance");
     require(allocatedTotalChestSMTReward > 0, "allocated total reward amount can't be zero");
     TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
-    _mapRewards[msg.sender].farmRewards -= _amount;
+    _mapRewards[msg.sender].farmRewards[1] -= _amount;
+    _mapRewards[msg.sender].farmRewards[0] += _amount;
     allocatedTotalChestSMTReward -= _amount;
   }
 
@@ -262,44 +238,29 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     allocatedTotalSurprizeSMTCReward -= _amount;
   }
 
+  function claimSellTaxReward(uint256 _amount) external override {
+    uint256 balance = _mapRewards[msg.sender].sellTaxRewards[1];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+    require(allocatedTotalSurprizeSMTCReward > 0, "allocated total reward amount can't be zero");
+    TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
+    _mapRewards[msg.sender].sellTaxRewards[1] -= _amount;
+    _mapRewards[msg.sender].sellTaxRewards[0] += _amount;
+    allocatedTotalSurprizeSMTCReward -= _amount;
+  }
+
+  function claimPassiveShareReward(uint256 _amount) external override {
+    uint256 balance = _mapRewards[msg.sender].passiveShareRewards[1];
+    require(balance - _amount >= 0, "The amount to claim exceeds the balance");
+    require(allocatedTotalSurprizeSMTCReward > 0, "allocated total reward amount can't be zero");
+    TransferHelper.safeTransfer(address(comptroller.getSMTC()), msg.sender, _amount);
+    _mapRewards[msg.sender].passiveShareRewards[1] -= _amount;
+    _mapRewards[msg.sender].passiveShareRewards[0] += _amount;
+    allocatedTotalSurprizeSMTCReward -= _amount;
+  }
 
   /***************************************
                     GETTERS
   ****************************************/
-  /**
-   * @dev Gets the RewardsToken
-   */
-  function getRewardToken() public view returns (IERC20) {
-    return comptroller.getWBNB();
-  }
-
-  /**
-   * @dev Gets the last applicable timestamp for this reward period
-   */
-  function lastTimeRewardApplicable() public view returns (uint256) {
-    return block.timestamp < periodFinish? block.timestamp : periodFinish;
-  }
-
-  /**
-   * @dev Calculates the amount of unclaimed rewards per token since last update,
-   * and sums with stored to give the new cumulative reward per token
-   * @return 'Reward' per staked token
-   */
-  function rewardPerToken() public view returns (uint256) {
-    // If there is no StakingToken liquidity, avoid div(0)
-    uint256 stakedTokens = totalRewardShares * 1e9;
-    if (stakedTokens == 0) {
-      return rewardPerTokenStored;
-    }
-    // new reward units to distribute = rewardRate * timeSinceLastUpdate
-    uint256 rewardUnitsToDistribute = rewardRate * (lastTimeRewardApplicable() - lastUpdateTime);
-    // prevent overflow
-    require(rewardUnitsToDistribute < type(uint256).max / 1e18);
-    // new reward units per token = (rewardUnitsToDistribute * 1e18) / totalTokens
-    uint256 unitsToDistributePerToken = rewardUnitsToDistribute * 1e18 / stakedTokens;
-    // return summed rate
-    return rewardPerTokenStored + unitsToDistributePerToken;
-  }
 
   function balanceOf(address _account) public view returns(uint256) {
     NobilityType memory _type = nobilityOf(_account);
@@ -309,20 +270,6 @@ contract SmartAchievement is Ownable, ISmartAchievement {
       return 0;
     }
     return _type.passiveShare * 1e9 / totalUsersOn;
-  }
-
-  /**
-   * @dev Calculates the amount of unclaimed rewards a user has earned
-   * @param _account User address
-   * @return Total reward amount earned
-   */
-  function earned(address _account) public view returns (uint256) {
-    // current rate per token - rate user previously received
-    uint256 userRewardDelta = rewardPerToken() - userRewardPerTokenPaid[_account];
-    // new reward = staked tokens * difference in rate
-    uint256 userNewReward = balanceOf(_account) * userRewardDelta / 1e18;
-    // add to previous rewards
-    return rewards[_account] + userNewReward;
   }
 
   /**
@@ -356,6 +303,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
    */
   function distributeToNobleLeaders(uint256 _amount) 
                   external override onlySmartMember {
+    
     uint256 portions = 0;
     for(uint256 i = 1 ; i <= totalNobilityTypes; i++)
       portions += userNobilityCounts[i];
@@ -364,8 +312,30 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 unitRewards = _amount / portions;
     for(uint256 i=0; i<_nobleLeaders.length; i++) {
       address user = _nobleLeaders[i];
+      if(_mapRewards[user].nobleRewards.length == 0)
+        _mapRewards[user].nobleRewards = new uint256[](2);
+
       uint256 nobilityRewards = nobilityOf(user).goldenTreeRewards;
-      _mapRewards[user].nobleRewards += nobilityRewards * unitRewards / 10;
+      _mapRewards[user].nobleRewards[1] += nobilityRewards * unitRewards / 10;
+    }
+  }
+
+  function distributeSellTax(uint256 _amount) 
+              external override onlySmartMember {
+    
+    ISmartArmy army = comptroller.getSmartArmy();
+    address[] memory users = army.licensedUsers();
+    uint256 totalPortions = 0;
+    for(uint256 i=0; i<users.length; i++) 
+      totalPortions += army.licensePortionOf(users[i]);
+    
+    for(uint256 i=0; i<users.length; i++) {
+      if(_mapRewards[users[i]].sellTaxRewards.length == 0)
+        _mapRewards[users[i]].sellTaxRewards = new uint256[](2);
+
+      uint256 portion = army.licensePortionOf(users[i]);
+      if(portion == 0) continue;
+      _mapRewards[users[i]].sellTaxRewards[1] += portion * _amount / totalPortions;
     }
   }
 
@@ -380,13 +350,13 @@ contract SmartAchievement is Ownable, ISmartAchievement {
 
     for(uint256 i=0; i<_farmers.length; i++){
       address user = _farmers[i];
-      _mapRewards[user].farmRewards += unitRewards;
+      if(_mapRewards[user].farmRewards.length == 0)
+        _mapRewards[user].farmRewards = new uint256[](2);
+      _mapRewards[user].farmRewards[1] += unitRewards;
     }
   }
 
-  function isPossibleSurprizeReward() 
-            public view returns(bool) {
-
+  function isPossibleSurprizeReward() public view returns(bool) {
     uint256 i;
     for(i=0; i<2; i++) {
       uint256 j;
@@ -424,6 +394,26 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     }
   }
 
+  function distributePassiveShare(
+    uint256 _amount
+  ) internal {
+    uint256 shares = 0;
+    for(uint256 i=0; i<_nobleLeaders.length; i++){
+      if(userNobilities[_nobleLeaders[i]] > 0)
+        shares += nobilityOf(_nobleLeaders[i]).passiveShare;
+    }
+    
+    if(shares == 0) return;
+    uint256 unitRewards = _amount / shares;
+    for(uint256 i=0; i<_nobleLeaders.length; i++) {
+      address user = _nobleLeaders[i];
+      if(_mapRewards[user].passiveShareRewards.length == 0)
+        _mapRewards[user].passiveShareRewards = new uint256[](2);
+      uint256 userShare = nobilityOf(user).passiveShare;
+      _mapRewards[user].passiveShareRewards[1] += userShare * unitRewards;
+    }
+  }
+
   /**
    * @dev Check Nobility upgradeable from growth balance to growth balance
    */
@@ -441,7 +431,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     address account,
     uint256 oldBalance,
     uint256 newBalance
-  ) public override updateReward(account) returns(bool) {
+  ) external override returns(bool) {
 
     require(_msgSender() == address(comptroller.getGoldenTreePool()), "SmartAchievement#notifyUpdate: only golden tree pool");
     (bool possible, uint256 id) = isUpgradeable(oldBalance, newBalance);
@@ -464,6 +454,9 @@ contract SmartAchievement is Ownable, ISmartAchievement {
       emit UserNobilityUpgraded(account, id);
       return true;
     }
+
+    distributePassiveShare(newBalance - oldBalance);
+
     return false;
   }
 
@@ -608,15 +601,10 @@ contract SmartAchievement is Ownable, ISmartAchievement {
   /** 
    * Swap and distribute SMT token to BNB
    */
-  function swapDistribute() 
+  function swapDistribute(uint _amount) 
     external override onlySmartMember
   {
     IERC20 smt  = comptroller.getSMT();
-    uint256 smtBalance = smt.balanceOf(address(this));
-    if(!swapEnabled || smtBalance <= limitPerSwap) {
-      return;
-    }
-
     IERC20 weth = comptroller.getWBNB();
     address[] memory wethpath = new address[](2);
     wethpath[0] = address(smt);
@@ -625,10 +613,9 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
 
     uint256 beforeBalance = address(this).balance;
-    uint256 swapAmount = smtBalance > limitPerSwap ? limitPerSwap : smtBalance;
-    smt.approve(address(_uniswapV2Router), swapAmount);
+    smt.approve(address(_uniswapV2Router), _amount);
     _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-        swapAmount,
+        _amount,
         0,
         wethpath,
         address(this),
@@ -637,37 +624,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 wethAmount = address(this).balance - beforeBalance;
     IWETH(address(weth)).deposit{value: wethAmount}();
     
-    if(wethAmount > 0) {
-      notifyRewardAmount(wethAmount);
-    }
     emit RewardSwapped(wethAmount);
-  }
-
-  /**
-   * @dev Notifies the contract that new rewards have been added.
-   * Calculates an updated rewardRate based on the rewards in period.
-   * @param _reward Units of RewardToken that have been added to the pool
-   */
-  function notifyRewardAmount(uint256 _reward)
-    internal
-    updateReward(address(0))
-  {
-    uint256 currentTime = block.timestamp;
-    // If previous period over, reset rewardRate
-    if (currentTime >= periodFinish) {
-      rewardRate = _reward / DURATION;
-    }
-    // If additional reward to existing period, calc sum
-    else {
-      uint256 remaining = periodFinish - currentTime;
-      uint256 leftover = remaining * rewardRate;
-      rewardRate = (_reward + leftover) / DURATION;
-    }
-
-    lastUpdateTime = currentTime;
-    periodFinish = currentTime + DURATION;
-
-    emit RewardAdded(_reward);
   }
 
   function indexOf(address[] memory array, address value) public pure returns(uint) {

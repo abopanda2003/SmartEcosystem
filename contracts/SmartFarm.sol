@@ -114,14 +114,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   }
 
   /**
-   * Update Farming Reward Wallet
-   */
-  // function updateRewardWallet(address _rewardWallet) public onlyOwner {
-  //   farmingRewardWallet = _rewardWallet;
-  //   emit UpdatedRewardWallet(_rewardWallet);
-  // }
-
-  /**
    * Update Fee information
    */
   function updateFeeInfo(
@@ -201,11 +193,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     updatePassiveReward(address(0))
   {
     uint currentTime = block.timestamp;
-
-    // transfer all SMT token for farming passive rewards to 
-    // IERC20 smtToken = comptroller.getSMT();
-
-    // TransferHelper.safeTransfer(address(smtToken), farmingRewardWallet, _reward);
 
     // If previous period over, reset rewardRate
     if (currentTime >= periodFinish) {
@@ -345,13 +332,8 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     ISmartArmy smartArmy = comptroller.getSmartArmy();
     require(_msgSender() == address(smartArmy) || _msgSender() == account, "SmartFarm#stakeSMT: invalid account");
 
-    uint256 liquidity = _tranferSmtToContract(_msgSender(), amount);
+    uint256 liquidity = _tranferSmtToContract(account, amount);
     require(liquidity > 0, "SmartFarm#stakeSMT: failed to add liquidity");
-
-    if(amount > 100) {
-      ISmartAchievement ach = comptroller.getSmartAchievement();
-      ach.addFarmDistributor(_msgSender());
-    }
 
     UserInfo storage uInfo = userInfo[account];
     uInfo.balance = uInfo.balance + liquidity;
@@ -391,16 +373,18 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     }
 
     ISmartAchievement ach = comptroller.getSmartAchievement();
-    if(ach.isFarmer(_msgSender()))
-      ach.removeFarmDistributor(_msgSender());
+    if(ach.isFarmer(account))
+      ach.removeFarmDistributor(account);
 
     UserInfo storage uInfo = userInfo[account];
 
-    uint256 smtAmount = _tranferSmtToUser(_msgSender(), lpAmount);
+    uint256 smtAmount = _tranferSmtToUser(account, lpAmount);
     require(smtAmount > 0, "SmartFarm#withdrawSMT: failed to sent SMT to staker");
 
     uInfo.balance = uInfo.balance - lpAmount;
-    uInfo.tokenBalance = uInfo.tokenBalance - smtAmount;
+    
+    if(uInfo.tokenBalance < smtAmount) uInfo.tokenBalance = 0;
+    else uInfo.tokenBalance = uInfo.tokenBalance - smtAmount;
     
     totalStaked = totalStaked - lpAmount;
     
@@ -458,6 +442,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       uInfo.tokenBalance = uInfo.tokenBalance + amount;
     }
 
+    ISmartAchievement ach = comptroller.getSmartAchievement();
+    if(amount > 100)
+      ach.addFarmDistributor(_from);
+    
     // Swap half of SMT token to BUSD
     uint256 half = amount / 2;
     uint256 otherHalf = amount - half;
@@ -520,7 +508,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       // transfer smt to passive pool and sync
       ISmartAchievement ach = comptroller.getSmartAchievement();
       TransferHelper.safeTransfer(address(smtToken), address(ach), farmingTaxPassiveAmount);
-      ISmartAchievement(ach).swapDistribute();
+      ISmartAchievement(ach).swapDistribute(farmingTaxPassiveAmount);
       totalPaid = totalPaid + farmingTaxPassiveAmount;
     }
 
