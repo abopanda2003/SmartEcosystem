@@ -247,13 +247,11 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
         uint256 shareAmount = busdAmount * percent / 10_000;      
         if(i == 0) {
           increaseGrowth(ref, shareAmount);
-          // growthBalances[ref] = growthBalances[ref] + shareAmount;
           emit Growth(shareAmount, ref);
         } else {
           uint256 ladderLevel = smartArmy.licenseLevelOf(ref);
           if(ladderLevel >= i) {
             increaseGrowth(ref, shareAmount);
-            // growthBalances[ref] = growthBalances[ref] + shareAmount;
             emit ReferralGrowth(shareAmount, ref, account, i);
           }
         }

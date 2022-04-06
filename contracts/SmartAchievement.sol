@@ -96,7 +96,7 @@ contract SmartAchievement is ISmartAchievement {
     admin = msg.sender;
 
     // initialize nobility types
-    _updateNobilityType(1, 'Folks', 1, 10, 2, 281e6,
+    _updateNobilityType(1, 'Folks', 1e18, 10, 2, 281e6,
       [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0, 0],
       [uint256(0), 0, 0, 0, 0, 0, 0, 0, 0, 0]
     );
@@ -104,7 +104,7 @@ contract SmartAchievement is ISmartAchievement {
     _mapChestStmSupply[1] = [uint256(0), 0, 0, 0, 0, 0, 0];
     _mapChestStmcSupply[1] = [uint256(0), 0, 0, 0];
 
-    _updateNobilityType(2, 'Baron', 10, 15, 5,  41e6,
+    _updateNobilityType(2, 'Baron', 1e19, 15, 5,  41e6,
       [uint256(1e13), 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,0 ,0, 0],
       [uint256(1e16), 1e17, 1e18, 0, 0, 0, 0, 0, 0, 0]
     );
@@ -112,42 +112,42 @@ contract SmartAchievement is ISmartAchievement {
     _mapChestStmSupply[2] = [uint256(2e9), 1e8, 1e7, 1e6, 1e5, 1e4, 1e3];
     _mapChestStmcSupply[2] = [uint256(1e5), 1e4, 1e3, 0];
 
-    _updateNobilityType(3, 'Count',  50,  20, 10,  41e5,
+    _updateNobilityType(3, 'Count',  5e19,  20, 10,  41e5,
       [uint256(2.5e13), 2.5e14, 2.5e15, 2.5e16, 2.5e17, 2.5e18, 2.5e19, 0, 0, 0],
       [uint256(2.5e16), 2.5e17, 2.5e18, 0, 0, 0, 0, 0, 0, 0]
     );
     _mapChestStmSupply[3] = [uint256(1e8), 1e8, 1e7, 1e6, 1e5, 1e4, 1e3];
     _mapChestStmcSupply[3] = [uint256(1e5), 1e4, 1e3, 0];
 
-    _updateNobilityType(4, 'Viscount', 100,  25, 20, 1e5,
+    _updateNobilityType(4, 'Viscount', 1e20,  25, 20, 1e5,
       [uint256(5e14), 5e15, 5e16, 5e17, 5e18, 5e19, 0 ,0, 0, 0],
       [uint256(5e16), 5e17, 5e18, 0, 0, 0, 0, 0, 0, 0]
     );
     _mapChestStmSupply[4] = [uint256(41e6), 1e7, 1e6, 1e5, 1e4, 1e3, 0];
     _mapChestStmcSupply[4] = [uint256(1e5), 1e4, 1e3, 0];
     
-    _updateNobilityType(5, 'Earl',     200,  30, 40,  10000,
+    _updateNobilityType(5, 'Earl', 2e20,  30, 40,  10000,
       [uint256(8.5e15), 8.5e16, 8.5e17, 8.5e18, 8.5e19, 0 ,0 ,0 ,0, 0],
       [uint256(8.5e16), 8.5e17, 8.5e18, 0 ,0, 0, 0, 0, 0, 0]
     );
     _mapChestStmSupply[5] = [uint256(4.1e6), 1e6, 1e5, 1e4, 1e3, 0, 0];
     _mapChestStmcSupply[5] = [uint256(1e5), 1e4, 1e3, 0];
 
-    _updateNobilityType(6, 'Duke',     500,  35, 100,   1000,
+    _updateNobilityType(6, 'Duke',  5e20,  35, 100,   1000,
       [uint256(2.5e16), 2.5e17, 2.5e18, 2.5e19, 2.5e20, 0, 0, 0, 0, 0],
       [uint256(2.5e17), 2.5e18, 2.5e19, 0, 0, 0, 0, 0, 0, 0]
     );
     _mapChestStmSupply[6] = [uint256(4.1e5), 1e5, 1e4, 1e3, 1e2, 0, 0];
     _mapChestStmcSupply[6] = [uint256(1e4), 1e3, 1e2, 0];
 
-    _updateNobilityType(7, 'Prince',   1000, 40, 300, 100,
+    _updateNobilityType(7, 'Prince',   1e21, 40, 300, 100,
       [uint256(5e17), 5e18, 5e19, 5e20, 0, 0, 0, 0, 0, 0],
       [uint256(5e17), 5e18, 5e19, 0, 0, 0, 0, 0, 0, 0]
     );
     _mapChestStmSupply[7] = [uint256(4.1e4), 1e4, 1e3, 1e2, 0, 0, 0];
     _mapChestStmcSupply[7] = [uint256(1e4), 1e3, 1e2, 0];
 
-    _updateNobilityType(8, 'King',  2000,  50,  700,  10,
+    _updateNobilityType(8, 'King',  2e21,  50,  700,  10,
       [uint256(5e18), 5e19, 5e20, 5e21, 0, 0, 0, 0, 0, 0],
       [uint256(1e18), 1e18, 1e19, 1e20, 0, 0, 0, 0, 0, 0]
     );
