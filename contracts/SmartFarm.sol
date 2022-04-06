@@ -182,62 +182,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     _;
   }
 
-  /**
-   * @dev Notifies the contract that new rewards have been added.
-   * Calculates an updated rewardRate based on the rewards in period.
-   * @param _reward Units of RewardToken that have been added to the pool
-   */
-  function notifyRewardAmount(uint _reward)
-    external override
-    onlyRewardsDistributor
-    updatePassiveReward(address(0))
-  {
-    uint currentTime = block.timestamp;
-
-    // If previous period over, reset rewardRate
-    if (currentTime >= periodFinish) {
-      rewardRate = _reward / DURATION;
-    }
-    // If additional reward to existing period, calc sum
-    else {
-      uint remaining = periodFinish - currentTime;
-      uint leftover = remaining * rewardRate;
-      rewardRate = (_reward + leftover) / DURATION;
-    }
-
-    lastUpdateTime = currentTime;
-    periodFinish = currentTime + DURATION;
-
-    emit RewardAdded(_reward);
-  }
-
-  /** @dev Updates the reward for a given address, before executing function */
-  modifier updatePassiveReward(address account) {
-    _;
-    // Setting of global vars
-    uint256 newRewardPerToken = rewardPerToken();
-    // If statement protects against loss in initialisation case
-    if (newRewardPerToken > 0) {
-      rewardPerTokenStored = newRewardPerToken;
-      lastUpdateTime = lastTimeRewardApplicable();
-      // Setting of personal vars based on new globals
-      if (account != address(0)) {
-        UserInfo storage uInfo = userInfo[account];
-        uInfo.rewards = earnedPassive(account);
-        uInfo.rewardPerTokenPaid = newRewardPerToken;
-      }
-    }
-  }
-
-  modifier updateFixedReward(address account) {
-      _;
-      if (account != address(0)) {
-          UserInfo storage uInfo = userInfo[account];
-          uInfo.rewards = earned(account);
-          uInfo.lastUpdated = block.timestamp;
-      }
-  }
-
   function reserve(address account) public view returns (uint256) {
     return userInfo[account].tokenBalance;
   }
@@ -246,73 +190,16 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     return userInfo[account].balance;
   }
 
-  function rewardsOf(address account) public view returns (uint256) {
-    return userInfo[account].rewards;
+  function unclaimedRewardsOf(address account) public view returns (uint256) {
+    return userInfo[account].unclaimedRewards;
+  }
+
+  function claimedRewardsOf(address account) public view returns (uint256) {
+    return userInfo[account].claimedRewards;
   }
 
   function userInfoOf(address account) public view returns (UserInfo memory) {
     return userInfo[account];
-  }
-
-   /**
-   * @dev Gets the last applicable timestamp for this reward period
-   */
-  function lastTimeRewardApplicable() public view returns (uint) {
-    return block.timestamp < periodFinish? block.timestamp : periodFinish;
-  }
-
-  /**
-   * @dev Calculates the amount of unclaimed rewards per token since last update,
-   * and sums with stored to give the new cumulative reward per token
-   * @return 'Reward' per staked token
-   */
-  function rewardPerToken() public view returns (uint) {
-    // If there is no StakingToken liquidity, avoid div(0)
-    uint256 stakedTokens = totalStaked;
-    if (stakedTokens == 0) {
-      return rewardPerTokenStored;
-    }
-    // new reward units to distribute = rewardRate * timeSinceLastUpdate
-    uint256 rewardUnitsToDistribute = rewardRate * (lastTimeRewardApplicable() - lastUpdateTime);
-    // prevent overflow
-    require(rewardUnitsToDistribute < type(uint256).max / 1e18);
-    // new reward units per token = (rewardUnitsToDistribute * 1e18) / totalTokens
-    uint256 unitsToDistributePerToken = rewardUnitsToDistribute * 1e18 / stakedTokens;
-    // return summed rate
-    return rewardPerTokenStored + unitsToDistributePerToken;
-  }
-
-  /**
-   * Calculate earned amount from lastUpdated to block.timestamp
-   * Check License activate status while staking 
-   */
-  function earned(address account) public view returns (uint256) {
-    uint256 blockTime = block.timestamp;
-    UserInfo memory uInfo = userInfo[account];
-    // Check license activation duration 
-    (uint256 start, uint256 end) = comptroller.getSmartArmy().licenseActiveDuration(account, uInfo.lastUpdated, blockTime);
-    if(start == 0 || end == 0) {
-      return uInfo.rewards;
-    }    
-    uint256 duration = end - start;
-    uint256 amount = duration * balanceOf(account) * farmingRewardPercent / 86400 / 10_000;
-    return uInfo.rewards + amount;
-  }
-
-  /**
-   * @dev Calculates the amount of unclaimed rewards a user has earned
-   * @param _account User address
-   * @return Total reward amount earned
-   */
-  function earnedPassive(address _account) public view returns (uint256) {
-    UserInfo memory uInfo = userInfo[_account];
-
-    // current rate per token - rate user previously received
-    uint256 userRewardDelta = rewardPerToken() - uInfo.rewardPerTokenPaid;
-    // new reward = staked tokens * difference in rate
-    uint256 userNewReward = balanceOf(_account) * userRewardDelta / 1e18;
-    // add to previous rewards
-    return uInfo.rewards + userNewReward;
   }
 
   /**
@@ -325,8 +212,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     uint256 amount    
   ) 
     public override
-    updateFixedReward(msg.sender)
-    updatePassiveReward(msg.sender)
     returns(uint256)
   {
     ISmartArmy smartArmy = comptroller.getSmartArmy();
@@ -354,8 +239,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   )
     public 
     override
-    updateFixedReward(account)
-    updatePassiveReward(account)
     returns(uint256)
   {
     require(lpAmount > 0, "SmartFarm#withdrawSMT: Cannot withdraw 0");
@@ -401,18 +284,19 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     override
   {
       UserInfo storage uInfo = userInfo[_msgSender()];
-      uint256 rewards = rewardsOf(_msgSender());
-      require(rewards > 0 , "SmartFarm#stakeSMT: Not enough rewards to claim");
+      uInfo.unclaimedRewards = currentRewardOf(_msgSender());
+      require(uInfo.unclaimedRewards - _amount > 0 , "SmartFarm#stakeSMT: Not enough rewards to claim");
 
       TransferHelper.safeTransfer(address(comptroller.getSMT()), _msgSender(), _amount);
 
-      uInfo.rewards = uInfo.rewards - _amount;
-      emit Claimed(_msgSender(), rewards);
+      uInfo.unclaimedRewards = uInfo.unclaimedRewards - _amount;
+      uInfo.claimedRewards = uInfo.claimedRewards + _amount;
+      emit Claimed(_msgSender(), _amount);
   }
   
   function exit() external {
     withdrawSMT(msg.sender, balanceOf(msg.sender));
-    claimReward(rewardsOf(msg.sender));
+    claimReward(unclaimedRewardsOf(msg.sender));
   }
 
   /**
@@ -440,6 +324,8 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
       UserInfo storage uInfo = userInfo[_from];
       uInfo.tokenBalance = uInfo.tokenBalance + amount;
+      uInfo.rewardPerDay = uInfo.tokenBalance * farmingRewardPercent / 10000;
+      uInfo.lastUpdated = block.timestamp;
     }
 
     ISmartAchievement ach = comptroller.getSmartAchievement();
@@ -515,6 +401,15 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     return totalPaid;
   }
 
+  function currentRewardOf(address _account) public view returns(uint256) {
+    UserInfo storage uInfo = userInfo[_account];
+    (uint256 start, uint256 end) = comptroller.getSmartArmy().licenseActiveDuration(_account, uInfo.lastUpdated, block.timestamp);
+    if(start == 0 || end == 0) {
+      return uInfo.unclaimedRewards;
+    }
+    uint256 duration = end - start;
+    return uInfo.rewardPerDay * duration / 86400;
+  }
 
   /**
    * Transfer smt token to user.
@@ -617,7 +512,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
         block.timestamp
     );
   }
-
 
   function _removeLiquidity(uint256 lpAmount) 
     private 

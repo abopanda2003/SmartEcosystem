@@ -6,7 +6,7 @@ interface ISmartFarm {
     struct PoolInfo {
         address stakingTokenAddress;     // staking contract address
         address rewardTokenAddress;      // reward token contract
-        uint256 rewardPerDay;            // reward percent per day
+        // uint256 rewardPerDay;            // reward percent per day
         uint unstakingFee;            
         uint256 totalStaked;             /* How many tokens we have successfully staked */
     }
@@ -14,13 +14,13 @@ interface ISmartFarm {
     struct UserInfo {
         uint256 tokenBalance;
         uint256 balance;
-        uint256 rewards;
-        uint256 rewardPerTokenPaid;     // User rewards per token paid for passive
+        uint256 claimedRewards;
+        uint256 unclaimedRewards;
+        uint256 rewardPerDay;
         uint256 lastUpdated;
     }
     
     function stakeSMT(address account, uint256 amount) external returns(uint256);
     function withdrawSMT(address account, uint256 amount) external returns(uint256);
     function claimReward(uint256 _amount) external;
-    function notifyRewardAmount(uint _reward) external;
 }

@@ -531,7 +531,7 @@ contract SMT is Context, IBEP20, Ownable {
      */
     function distributeSellTaxToFarming (uint256 amount) internal {
         require(_farmingRewardAddress != address(0x0), "SmartFarm can't be zero address");
-        ISmartFarm(_farmingRewardAddress).notifyRewardAmount(amount);
+        // ISmartFarm(_farmingRewardAddress).notifyRewardAmount(amount);
         ISmartAchievement ach = comptroller.getSmartAchievement();
         ach.distributeSellTax(amount);
     }
