@@ -10,9 +10,9 @@ pragma solidity 0.8.4;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 // import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 // import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import '@openzeppelin/contracts/access/Ownable.sol';
+// import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+// import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+// import '@openzeppelin/contracts/access/Ownable.sol';
 
 // import './libs/StableMath.sol';
 import './libs/TransferHelper.sol';
@@ -28,11 +28,11 @@ import "./interfaces/ISmartLadder.sol";
 import "./interfaces/ISmartArmy.sol";
 import 'hardhat/console.sol';
 
-contract SmartAchievement is Ownable, ISmartAchievement {
+contract SmartAchievement is ISmartAchievement {
   // using StableMath for uint256;
   // using SafeMath for uint256;
   // using EnumerableSet for EnumerableSet.AddressSet;
-
+  address admin;
   ISmartComp public comptroller;
 
   bool public swapEnabled;
@@ -93,6 +93,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     comptroller = ISmartComp(_comp);
 
     totalNobilityTypes = 8;
+    admin = msg.sender;
 
     // initialize nobility types
     _updateNobilityType(1, 'Folks', 1, 10, 2, 281e6,
@@ -162,6 +163,11 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     supTotalSupply = [smtSupply, smtcSupply];
   }
 
+  modifier onlyOwner() {
+    require(msg.sender == admin, "only owner");
+    _;
+  }
+
   modifier onlySmartMember() {
     require(
       msg.sender == address(comptroller.getSmartArmy())
@@ -169,7 +175,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
       || msg.sender == address(comptroller.getSmartFarm())
       || msg.sender == address(comptroller.getGoldenTreePool())
       || msg.sender == address(comptroller.getSmartBridge())
-      || msg.sender == owner(), 
+      || msg.sender == admin, 
       "only smart members can access to this function");
       _;
   }
@@ -433,7 +439,7 @@ contract SmartAchievement is Ownable, ISmartAchievement {
     uint256 newBalance
   ) external override returns(bool) {
 
-    require(_msgSender() == address(comptroller.getGoldenTreePool()), "SmartAchievement#notifyUpdate: only golden tree pool");
+    require(msg.sender == address(comptroller.getGoldenTreePool()), "SmartAchievement#notifyUpdate: only golden tree pool");
     (bool possible, uint256 id) = isUpgradeable(oldBalance, newBalance);
     if(possible) {
       userNobilities[account] = id;
