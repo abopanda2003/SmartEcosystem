@@ -22,7 +22,8 @@ import './interfaces/ISmartArmy.sol';
 import './interfaces/ISmartLadder.sol';
 import './interfaces/ISmartFarm.sol';
 import './interfaces/ISmartComp.sol';
-import './interfaces/ISmartAchievement.sol';
+import './interfaces/ISmartNobilityAchievement.sol';
+import './interfaces/ISmartOtherAchievement.sol';
 import 'hardhat/console.sol';
 
 contract SMT is Context, IBEP20, Ownable {
@@ -45,7 +46,8 @@ contract SMT is Context, IBEP20, Ownable {
     address public _referralAddress;
     address public _goldenTreePoolAddress;
     address public _devAddress;
-    address public _achievementAddress;
+    address public _nobilityAchievementAddress;
+    address public _otherAchievementAddress;
     address public _farmingRewardAddress;
     address public _intermediaryAddress;
     address public _airdropAddress;
@@ -213,7 +215,8 @@ contract SMT is Context, IBEP20, Ownable {
         comptroller = ISmartComp(smartComp);
         _referralAddress = address(comptroller.getSmartLadder());
         _goldenTreePoolAddress = address(comptroller.getGoldenTreePool());
-        _achievementAddress = address(comptroller.getSmartAchievement());
+        _nobilityAchievementAddress = address(comptroller.getSmartNobilityAchievement());
+        _otherAchievementAddress = address(comptroller.getSmartOtherAchievement());
         _farmingRewardAddress = address(comptroller.getSmartFarm());
         _intermediaryAddress = comptroller.getSmartBridge();
         _smartArmy = address(comptroller.getSmartArmy());
@@ -223,7 +226,8 @@ contract SMT is Context, IBEP20, Ownable {
 
         _excludedFromFee[_referralAddress] = true;
         _excludedFromFee[_goldenTreePoolAddress] = true;
-        _excludedFromFee[_achievementAddress] = true;
+        _excludedFromFee[_nobilityAchievementAddress] = true;
+        _excludedFromFee[_otherAchievementAddress] = true;
         _excludedFromFee[_farmingRewardAddress] = true;
         _excludedFromFee[_intermediaryAddress] = true;
         _excludedFromFee[_devAddress] = true;
@@ -262,11 +266,11 @@ contract SMT is Context, IBEP20, Ownable {
 
         // mint chest rewards to achievement contract.
         _chestRewardsDist = _totalSupply.div(1e5).mul(8864);
-        _balances[_achievementAddress] = _balances[_achievementAddress].add(_chestRewardsDist);
+        _balances[_nobilityAchievementAddress] = _balances[_nobilityAchievementAddress].add(_chestRewardsDist);
 
         // mint surprize rewards to achievement contract.
         _suprizeRewardsDist = _totalSupply.div(100).mul(6);
-        _balances[_achievementAddress] = _balances[_achievementAddress].add(_suprizeRewardsDist);
+        _balances[_otherAchievementAddress] = _balances[_otherAchievementAddress].add(_suprizeRewardsDist);
 
         // mint some tokens to airdrop wallet.
         _airdropDist = _totalSupply.div(100);
@@ -432,7 +436,7 @@ contract SMT is Context, IBEP20, Ownable {
 
     function _transferToAchievement(address _sender, uint256 amount) internal {        
         _transfer(_sender, address(this), amount);
-        _swapTokenForBNB(_achievementAddress, amount);
+        _swapTokenForBNB(_otherAchievementAddress, amount);
     }
 
     function distributeSellTax (
@@ -459,7 +463,8 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_sellAchievementFee).div(100);
-            _transfer(sender, _achievementAddress, achievementAmount);
+            _transfer(sender, _otherAchievementAddress, achievementAmount);
+            distributeTaxToAchievement(achievementAmount);
         }
     }
 
@@ -487,7 +492,8 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_buyAchievementFee).div(100);
-            _transfer(sender, _achievementAddress, achievementAmount);
+            _transfer(sender, _otherAchievementAddress, achievementAmount);
+            distributeTaxToAchievement(achievementAmount);
         }
     }
 
@@ -514,7 +520,8 @@ contract SMT is Context, IBEP20, Ownable {
         }
         if(!_isLockedAchievementTax) {
             uint256 achievementAmount = amount.mul(_transferAchievementFee).div(100);
-            _transfer(sender, _achievementAddress, achievementAmount);
+            _transfer(sender, _nobilityAchievementAddress, achievementAmount);
+            distributeTaxToAchievement(achievementAmount);
         }
     }
 
@@ -532,16 +539,24 @@ contract SMT is Context, IBEP20, Ownable {
     function distributeSellTaxToFarming (uint256 amount) internal {
         require(_farmingRewardAddress != address(0x0), "SmartFarm can't be zero address");
         ISmartFarm(_farmingRewardAddress).notifyRewardAmount(amount);
-        ISmartAchievement ach = comptroller.getSmartAchievement();
+        ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
         ach.distributeSellTax(amount);
     }
 
     /**
      * @dev Distribute tax to golden Tree pool as SMT and notify
      */
-    function distributeTaxToGoldenTreePool (address account, uint256 amount) internal {
+    function distributeTaxToGoldenTreePool(address account, uint256 amount) internal {
         require(_goldenTreePoolAddress != address(0x0), "GoldenTreePool can't be zero address");
         IGoldenTreePool(_goldenTreePoolAddress).notifyReward(amount, account);
+    }
+
+    /**
+     * @dev Distribute tax to golden Tree pool as SMT and notify
+     */
+    function distributeTaxToAchievement(uint256 amount) internal {
+        require(_nobilityAchievementAddress != address(0x0), "GoldenTreePool can't be zero address");
+        ISmartNobilityAchievement(_nobilityAchievementAddress).distributePassiveShare(amount);
     }
 
     function addSurprizeDistributor() internal {
@@ -549,7 +564,7 @@ contract SMT is Context, IBEP20, Ownable {
         address sender = address(tx.origin);
         uint256 amount = _balances[sender] - _mapSurprizeRewardPaid[sender];
         if(license.isActiveLicense(sender) &&  amount >= 1e21) {
-            ISmartAchievement ach = comptroller.getSmartAchievement();
+            ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
             ach.distributeSurprizeReward(sender, amount/1e21);
             _mapSurprizeRewardPaid[sender] += amount;
         }
@@ -797,9 +812,9 @@ contract SMT is Context, IBEP20, Ownable {
             _devAddress = dev;
             _excludedFromFee[dev] = true;
         }
-        if (_achievementAddress != achievement && achievement != address(0x0)) {
-            _excludedFromFee[_achievementAddress] = false;
-            _achievementAddress = achievement;
+        if (_otherAchievementAddress != achievement && achievement != address(0x0)) {
+            _excludedFromFee[_otherAchievementAddress] = false;
+            _otherAchievementAddress = achievement;
             _excludedFromFee[achievement] = true;
         }
         if (_farmingRewardAddress != farming && farming != address(0x0)) {

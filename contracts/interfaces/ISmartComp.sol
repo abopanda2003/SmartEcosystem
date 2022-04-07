@@ -7,10 +7,10 @@ import './ISmartArmy.sol';
 import './ISmartLadder.sol';
 import './ISmartFarm.sol';
 import './IGoldenTreePool.sol';
-import './ISmartAchievement.sol';
+import './ISmartNobilityAchievement.sol';
+import './ISmartOtherAchievement.sol';
 import './IUniswapRouter.sol';
 import "./ISmartTokenCash.sol";
-
 
 // Smart Comptroller Interface
 interface ISmartComp {
@@ -26,6 +26,7 @@ interface ISmartComp {
     function getSmartLadder() external view returns(ISmartLadder);
     function getSmartFarm() external view returns(ISmartFarm);
     function getGoldenTreePool() external view returns(IGoldenTreePool);
-    function getSmartAchievement() external view returns(ISmartAchievement);
+    function getSmartNobilityAchievement() external view returns(ISmartNobilityAchievement);
+    function getSmartOtherAchievement() external view returns(ISmartOtherAchievement);
     function getSmartBridge() external view returns(address);
 }

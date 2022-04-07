@@ -17,7 +17,8 @@ import './interfaces/IUniswapRouter.sol';
 import './interfaces/IUniswapFactory.sol';
 import './interfaces/IUniswapPair.sol';
 import './interfaces/IGoldenTreePool.sol';
-import './interfaces/ISmartAchievement.sol';
+import './interfaces/ISmartNobilityAchievement.sol';
+import './interfaces/ISmartOtherAchievement.sol';
 import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartTokenCash.sol';
 
@@ -55,7 +56,8 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
 
     comptroller = ISmartComp(_smartComp);
     address goldenTreePoolAddress = address(comptroller.getGoldenTreePool());
-    address achievementAddress = address(comptroller.getSmartAchievement());
+    address nobilityAchievementAddress = address(comptroller.getSmartNobilityAchievement());
+    address otherAchievementAddress = address(comptroller.getSmartOtherAchievement());
     _operator = msg.sender;
 
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
@@ -75,10 +77,10 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
     _balances[_dev] = devRewardDist;
     // surprise reward mint.
     uint256 surpRewardDist = _totalSupply.div(100).mul(9);
-    _balances[achievementAddress] = surpRewardDist;
+    _balances[otherAchievementAddress] = surpRewardDist;
     // chest reward mint.
     uint256 chestRewardDist = _totalSupply.div(1e5).mul(7692);
-    _balances[achievementAddress] += chestRewardDist;
+    _balances[nobilityAchievementAddress] = chestRewardDist;
     // private sale bonus mint.
     uint256 privSaleDist = _totalSupply.div(100);
     _balances[_operator] = privSaleDist;

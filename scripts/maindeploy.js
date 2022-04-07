@@ -252,7 +252,8 @@ async function main() {
         NA_SmartComp,
         NA_SmartBridge,
         NA_GoldenTreePool,
-        NA_SmartAchievement,
+        NA_NobilityAch,
+        NA_OtherAch,
         NA_SmartArmy,
         NA_SmartFarm,
         NA_SmartLadder,
@@ -293,8 +294,11 @@ async function main() {
       deployGoldenTreePool: false,
       upgradeGoldenTreePool: false,
 
-      deploySmartAchievement: false,
-      upgradeSmartAchievement: false,
+      deploySmartNobilityAch: false,
+      upgradeSmartNobilityAch: false,
+
+      deploySmartOtherAch: false,
+      upgradeSmartOtherAch: false,
 
       deploySmartArmy: false,
       upgradeSmartArmy: false,
@@ -307,13 +311,13 @@ async function main() {
 
       deploySMTBridge: false,
 
-      deploySMTCashToken: false,
+      deploySMTCashToken: true,
 
       resetSmartComp: false,
 
-      deploySMTToken: false,
+      deploySMTToken: true,
 
-      testSMTTokenTransfer: false,
+      testSMTTokenTransfer: true,
 
       testAddLiquidity: true,
 
@@ -428,7 +432,6 @@ async function main() {
     }
     if(options.upgradeGoldenTreePool) {
         green(`\nUpgrading GoldenTreePool contract...`);
-
         await upgrades.upgradeProxy(goldenTreePoolAddress, GoldenTreePool);
         green(`GoldenTreePool Contract Upgraded`);
     }
@@ -438,25 +441,64 @@ async function main() {
     }
     const goldenTreePoolIns = await ethers.getContractAt("GoldenTreePool", goldenTreePoolAddress);
 
-    ///////////////// Smart Archievement ////////////////////
-    let smartAchievementAddress = NA_SmartAchievement;
-    const SmartAchievement = await ethers.getContractFactory('SmartAchievement');
-    if(options.deploySmartAchievement) {
-        cyan(`\nDeploying Smart Achievement contract...`);
-        const SmartAchievementContract = await SmartAchievement.deploy(smartCompAddress);
-        await SmartAchievementContract.deployed();
-        smartAchievementAddress = SmartAchievementContract.address;
-        displayResult('SmartAchievement Contract Address:', SmartAchievementContract);
+    ///////////////// Smart Nobility Archievement ////////////////////
+    let smartNobilityAchAddress = NA_NobilityAch;
+    const SmartNobilityAchievement = await ethers.getContractFactory('SmartNobilityAchievement');
+    if(options.deploySmartNobilityAch) {
+        cyan(`\nDeploying SmartNobilityAchievement Contract...`);
+        const nobilityAchProxy = await upgrades.deployProxy(
+          SmartNobilityAchievement,
+            [smartCompAddress],
+            {
+              initializer: 'initialize',
+              kind: 'uups'
+            }
+        );
+        await nobilityAchProxy.deployed();
+        displayResult('SmartNobilityAchievement Proxy Address:', nobilityAchProxy);
+        smartNobilityAchAddress = nobilityAchProxy.address;
 
-        tx = await smartCompInstance.setSmartAchievement(smartAchievementAddress);
+        tx = await smartCompInstance.setSmartNobilityAchievement(smartNobilityAchAddress);
         await tx.wait();
-        console.log("set Smart Achievement to SmartComp: ", tx.hash);
+        console.log("set SmartNobilityAchievement to SmartComp: ", tx.hash);
     }
-    if(!options.deploySmartAchievement && 
-      !options.upgradeSmartAchievement) {
-      green(`\nSmartAchievement Contract deployed at ${smartAchievementAddress}`);
+    if(options.upgradeSmartNobilityAch) {
+      green(`\nUpgrading GoldenTreePool contract...`);
+      await upgrades.upgradeProxy(smartNobilityAchAddress, SmartNobilityAchievement);
+      green(`GoldenTreePool Contract Upgraded`);
     }
-    const smartAchievementIns = await ethers.getContractAt('SmartAchievement', smartAchievementAddress);
+    if(!options.deploySmartNobilityAch && 
+      !options.upgradeSmartNobilityAch) {
+      green(`\nSmartNobilityAchievement Contract deployed at ${smartNobilityAchAddress}`);
+    }
+    const smartNobilityAchIns = await ethers.getContractAt('SmartNobilityAchievement', smartNobilityAchAddress);
+
+    ///////////////// Smart Nobility Archievement ////////////////////
+    let smartOtherAchAddress = NA_OtherAch;
+    const SmartOtherAchievement = await ethers.getContractFactory('SmartOtherAchievement');
+    if(options.deploySmartOtherAch) {
+        cyan(`\nDeploying SmartOtherAchievement Contract...`);
+        const otherAchProxy = await upgrades.deployProxy(
+            SmartOtherAchievement,
+            [smartCompAddress],
+            {
+              initializer: 'initialize',
+              kind: 'uups'
+            }
+        );
+        await otherAchProxy.deployed();
+        displayResult('SmartOtherAchievement Proxy Address:', otherAchProxy);
+        smartOtherAchAddress = otherAchProxy.address;
+
+        tx = await smartCompInstance.setSmartOtherAchievement(smartOtherAchAddress);
+        await tx.wait();
+        console.log("set SmartOtherAchievement to SmartComp: ", tx.hash);
+    }
+    if(!options.deploySmartOtherAch && 
+      !options.upgradeSmartOtherAch) {
+      green(`\nSmartOtherAchievement Contract deployed at ${smartOtherAchAddress}`);
+    }
+    const smartOtherAchIns = await ethers.getContractAt('SmartOtherAchievement', smartOtherAchAddress);
 
     ///////////////// Smart Army //////////////////////
     let smartArmyAddress = NA_SmartArmy;
@@ -502,13 +544,13 @@ async function main() {
         await tx.wait();
         console.log("set SmartFarm to SmartComp: ", tx.hash);
 
-        let smartFarmInstance = await ethers.getContractAt("SmartFarm", smartFarmAddress)
-        tx = await smartFarmInstance.connect(owner).addDistributor(userWallet.address);
-        await tx.wait();
-        console.log("Added user to distributor's list");
-        tx = await smartFarmInstance.connect(owner).addDistributor(anotherUser.address);
-        await tx.wait();
-        console.log("Added another user to distributor's list");  
+        // let smartFarmInstance = await ethers.getContractAt("SmartFarm", smartFarmAddress)
+        // tx = await smartFarmInstance.connect(owner).addDistributor(userWallet.address);
+        // await tx.wait();
+        // console.log("Added user to distributor's list");
+        // tx = await smartFarmInstance.connect(owner).addDistributor(anotherUser.address);
+        // await tx.wait();
+        // console.log("Added another user to distributor's list");  
     }
     if(options.upgradeSmartFarm) {
         green(`\nUpgrading SmartFarm contract...`);
@@ -550,11 +592,6 @@ async function main() {
     ///////////////////////// SmartTokenCash ///////////////////////
     let smtcAddress = NA_SMTC;
     if(options.deploySMTCashToken) {
-      let addr = await smartCompInstance.getSmartAchievement();
-      console.log("achievement address: ", addr);
-      addr = await smartCompInstance.getGoldenTreePool();
-      console.log("golden tree address: ", addr);
-
       cyan(`\nDeploying SMTC Contract...`);
       const SmartTokenCash = await ethers.getContractFactory('SmartTokenCash');
       let smtcContract = await SmartTokenCash.deploy(
@@ -694,11 +731,11 @@ async function main() {
   
         // %%  when adding liquidity, owner have to be called for initial liquidity first.
         await addLiquidityToPools(
-          smtContract, busdToken, routerInstance, owner, 100000, 1, 10000, 10000
+          smtContract, busdToken, routerInstance, owner, 100000, 0.1, 10000, 10000
         );
 
         await addLiquidityToPools(
-          smtContract, busdToken, routerInstance, anotherUser, 10000, 0.2, 10000, 10000
+          smtContract, busdToken, routerInstance, anotherUser, 10000, 0.05, 10000, 10000
         );
 
         await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtcBnbIns);

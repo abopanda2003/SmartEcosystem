@@ -21,7 +21,8 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   ISmartLadder public smartLadder;
   ISmartFarm public smartFarm;
   IGoldenTreePool public goldenTreePool;
-  ISmartAchievement public smartAchievement;
+  ISmartNobilityAchievement public nobilityAchievement;
+  ISmartOtherAchievement public otherAchievement;
   ISmartTokenCash public smtcToken;
   address public smartBridge;
 
@@ -41,10 +42,6 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
 
   /// @notice Emitted when golden tree pool is changed
   event NewGoldenTreePool(IGoldenTreePool oldPool, IGoldenTreePool newPool);
-
-  /// @notice Emitted when smart achievement system is changed
-  event NewSmartAchievement(ISmartAchievement oldAchievement, ISmartAchievement newAchievement);
-
 
   function initialize(address _router, address _busd) public initializer {
 		__Ownable_init();
@@ -110,8 +107,12 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
     return goldenTreePool;
   }
 
-  function getSmartAchievement() external override view returns(ISmartAchievement) {
-    return smartAchievement;
+  function getSmartNobilityAchievement() external override view returns(ISmartNobilityAchievement) {
+    return nobilityAchievement;
+  }
+
+  function getSmartOtherAchievement() external override view returns(ISmartOtherAchievement) {
+    return otherAchievement;
   }
 
   function getSmartBridge() external override view returns(address) {
@@ -208,10 +209,16 @@ contract SmartComp is UUPSUpgradeable, OwnableUpgradeable, ISmartComp {
   /**
     * @notice Sets a new achievement system contract for the comptroller
     */
-  function setSmartAchievement(address _address) external onlyOwner {
+  function setSmartNobilityAchievement(address _address) external onlyOwner {
     // Track the old for the comptroller
-    ISmartAchievement oldAchievement = smartAchievement;
-    smartAchievement = ISmartAchievement(_address);
-    emit NewSmartAchievement(oldAchievement, smartAchievement);
+    nobilityAchievement = ISmartNobilityAchievement(_address);
+  }
+
+  /**
+    * @notice Sets a new achievement system contract for the comptroller
+    */
+  function setSmartOtherAchievement(address _address) external onlyOwner {
+    // Track the old for the comptroller
+    otherAchievement = ISmartOtherAchievement(_address);
   }
 }

@@ -8,30 +8,18 @@
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import './libs/TransferHelper.sol';
-// import './libs/StableMath.sol';
 
 import './interfaces/ISmartComp.sol';
-import './interfaces/ISmartLadder.sol';
-import './interfaces/ISmartArmy.sol';
-import './interfaces/ISmartFarm.sol';
-import './interfaces/IGoldenTreePool.sol';
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/IUniswapPair.sol';
 import './interfaces/IUniswapFactory.sol';
 import 'hardhat/console.sol';
 
 contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
-  // using StableMath for uint256;
-  // using SafeMath for uint256;
-  // using SafeERC20 for IERC20;
-  // using EnumerableSet for EnumerableSet.AddressSet;
-
   /// @dev Params for Passive Rewards
   uint public constant DURATION = 7 days;
 
@@ -43,9 +31,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   uint256 public lastUpdateTime;
   // Ever increasing rewardPerToken rate, based on % of total supply
   uint256 public rewardPerTokenStored;
-
-  address[] _rewardsDistributors;
-  // EnumerableSet.AddressSet private _rewardsDistributors;
 
   ISmartComp public comptroller;
 
@@ -151,32 +136,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     farmingRewardPercent = percent;
   }
 
-
-  /***************************************
-                    ADMIN
-  ****************************************/
-  /**
-   * @dev Add rewards distributor
-   * @param _address Address of Reward Distributor
-   */
-  function addDistributor(address _address) external onlyOwner {
-    addValue(_address);
-  }
-
-  /**
-   * @dev Remove rewards distributor
-   * @param _address Address of Reward Distributor
-   */
-  function removeDistributor(address _address) external onlyOwner {
-    removeByValue(_address);
-  }
-
-
   /** @dev only Rewards distributors */
   modifier onlyRewardsDistributor() {
     require(
-      contain(msg.sender)
-      || msg.sender == (address)(comptroller.getSMT())
+      msg.sender == (address)(comptroller.getSMT())
       || msg.sender == owner(), 
       "SmartFarm: only reward distributors"
     );
@@ -336,6 +299,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     (uint256 liquidity, uint256 stakedAmount) = _tranferSmtToContract(account, amount);
     require(liquidity > 0, "SmartFarm#stakeSMT: failed to add liquidity");
 
+    ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
+    if(stakedAmount > 100) ach.addFarmDistributor(account);
+
     UserInfo storage uInfo = userInfo[account];
     uInfo.balance = uInfo.balance + liquidity;
     uInfo.tokenBalance = uInfo.tokenBalance + stakedAmount;
@@ -375,7 +341,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       require(lpLocked + lpAmount <= balanceOf(account), "SmartFarm#withdrawSMT: withdraw amount is invalid");
     }
 
-    ISmartAchievement ach = comptroller.getSmartAchievement();
+    ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
     if(ach.isFarmer(account))
       ach.removeFarmDistributor(account);
 
@@ -445,10 +411,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       amount = amount - totalFarmingTax;
     }
 
-    ISmartAchievement ach = comptroller.getSmartAchievement();
-    if(amount > 100)
-      ach.addFarmDistributor(_from);
-    
     // Swap half of SMT token to BUSD
     uint256 half = amount / 2;
     uint256 otherHalf = amount - half;
@@ -509,9 +471,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     if(farmingTaxPassiveAmount > 0) {
       // TODO
       // transfer smt to passive pool and sync
-      ISmartAchievement ach = comptroller.getSmartAchievement();
+      ISmartNobilityAchievement ach = comptroller.getSmartNobilityAchievement();
       TransferHelper.safeTransfer(address(smtToken), address(ach), farmingTaxPassiveAmount);
-      ISmartAchievement(ach).swapDistribute(farmingTaxPassiveAmount);
+      ach.swapDistribute(farmingTaxPassiveAmount);
+      ach.distributePassiveShare(farmingTaxPassiveAmount);
       totalPaid = totalPaid + farmingTaxPassiveAmount;
     }
 
@@ -621,7 +584,6 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     );
   }
 
-
   function _removeLiquidity(uint256 lpAmount) 
     private 
     returns (uint amountA, uint amountB)
@@ -646,43 +608,4 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     );
   }
 
-  function indexOf(address value) public view returns(uint) {
-      uint i = 0;
-      while (_rewardsDistributors[i] != value) {
-          i++;
-      }
-      return i;
-  }
-
-  function contain(address value) public view returns(bool) {
-      uint i = 0;
-      for(i=0; i<_rewardsDistributors.length; i++)
-          if(_rewardsDistributors[i] == value) break;
-      
-      if(i < _rewardsDistributors.length) return true;
-      return false;
-  }
-
-  function addValue(address value) internal {
-      _rewardsDistributors.push(value);
-  }
-
-  function removeByValue(address value) internal {
-      require(_rewardsDistributors.length > 0, "The array length is zero now.");
-      uint i = indexOf(value);
-      removeByIndex(i);
-  }
-
-  function removeByIndex(uint i) internal {
-      require(_rewardsDistributors.length > 0, "The array length is zero now.");
-      while (i<_rewardsDistributors.length-1) {
-          _rewardsDistributors[i] = _rewardsDistributors[i+1];
-          i++;
-      }
-      _rewardsDistributors.pop();
-  }
-
-  function getRewardsDistributor() public view returns(address[] memory) {
-      return _rewardsDistributors;
-  }
 }

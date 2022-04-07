@@ -8,9 +8,6 @@
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-// import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -18,16 +15,13 @@ import "./interfaces/IUniswapRouter.sol";
 import "./interfaces/ISmartTokenCash.sol";
 import "./interfaces/ISmartComp.sol";
 import "./interfaces/IGoldenTreePool.sol";
-import "./interfaces/ISmartAchievement.sol";
+import "./interfaces/ISmartNobilityAchievement.sol";
+import "./interfaces/ISmartOtherAchievement.sol";
 import "./interfaces/ISmartLadder.sol";
 import "./interfaces/ISmartArmy.sol";
 import "hardhat/console.sol";
 
 contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool {
-  // using SafeERC20 for IERC20;
-  // using SafeMath for uint256;
-  // using EnumerableSet for EnumerableSet.AddressSet;
-
   /// @dev Token Addresses
   ISmartComp public comptroller;
 
@@ -203,9 +197,10 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
   function distributePhaseReward(uint256 phase) internal {
     uint256 smtcRewards = phaseRewards[phase-1];
-    ISmartAchievement ach = comptroller.getSmartAchievement();
-    ach.distributeToNobleLeaders(smtcRewards);
-    ach.distributeToFarmers(smtcRewards);
+    ISmartNobilityAchievement achNobility = comptroller.getSmartNobilityAchievement();
+    ISmartOtherAchievement achOther = comptroller.getSmartOtherAchievement();
+    achNobility.distributeToNobleLeaders(smtcRewards);
+    achOther.distributeToFarmers(smtcRewards);
   }
 
   /**
@@ -219,9 +214,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     onlyRewardsDistributor 
   {
 
-    if(amount == 0) {
-      return;
-    }
+    if(amount == 0) return;
 
     IERC20 busdToken = comptroller.getBUSD();
     IERC20 smtToken = comptroller.getSMT();
@@ -232,8 +225,6 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
     uint256 busdAmount = _uniswapV2Router.getAmountsOut(amount, busdpath)[1];
-
-
 
     // Add growth balance for from account
     // distribute growth token to referral
@@ -276,7 +267,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     uint256 old = growthBalanceOf(account);
     growthBalances[account] += amount;
     
-    ISmartAchievement ach = comptroller.getSmartAchievement();
+    ISmartNobilityAchievement ach = comptroller.getSmartNobilityAchievement();
     ach.notifyGrowth(account, old, growthBalanceOf(account));
   }
   
