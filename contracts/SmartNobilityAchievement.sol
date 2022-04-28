@@ -220,14 +220,15 @@ contract SmartNobilityAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmart
         shares += nobilityOf(_nobleLeaders[i]).passiveShare;
     }
     
-    if(shares == 0) return;
-    uint256 unitRewards = _amount / shares;
-    for(uint256 i=0; i<_nobleLeaders.length; i++) {
-      address user = _nobleLeaders[i];
-      if(_mapRewards[user].passiveShareRewards.length == 0)
-        _mapRewards[user].passiveShareRewards = new uint256[](2);
-      uint256 userShare = nobilityOf(user).passiveShare;
-      _mapRewards[user].passiveShareRewards[1] += userShare * unitRewards;
+    if(shares > 0) {
+      uint256 unitRewards = _amount / shares;
+      for(uint256 i=0; i<_nobleLeaders.length; i++) {
+        address user = _nobleLeaders[i];
+        if(_mapRewards[user].passiveShareRewards.length == 0)
+          _mapRewards[user].passiveShareRewards = new uint256[](2);
+        uint256 userShare = nobilityOf(user).passiveShare;
+        _mapRewards[user].passiveShareRewards[1] += userShare * unitRewards;
+      }
     }
   }
 
@@ -410,7 +411,7 @@ contract SmartNobilityAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmart
         block.timestamp + 3600
     );
     uint256 wethAmount = address(this).balance - beforeBalance;
-    IWETH(address(weth)).deposit{value: wethAmount}();
+    // IWETH(address(weth)).deposit{value: wethAmount}();
     
     emit RewardSwapped(wethAmount);
   }

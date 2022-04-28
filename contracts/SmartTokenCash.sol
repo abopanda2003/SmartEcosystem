@@ -10,9 +10,10 @@ pragma solidity 0.8.4;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import '@openzeppelin/contracts/access/Ownable.sol';
-import '@openzeppelin/contracts/utils/Context.sol';
 import '@openzeppelin/contracts/utils/math/SafeMath.sol';
+import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/IUniswapFactory.sol';
 import './interfaces/IUniswapPair.sol';
@@ -21,8 +22,9 @@ import './interfaces/ISmartNobilityAchievement.sol';
 import './interfaces/ISmartOtherAchievement.sol';
 import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartTokenCash.sol';
+import "hardhat/console.sol";
 
-contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
+contract SmartTokenCash is ISmartTokenCash, ContextUpgradeable, UUPSUpgradeable, OwnableUpgradeable{
   using SafeMath for uint256;
 
   address public _uniswapV2BUSDPair;
@@ -33,7 +35,7 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
   string private _name;
   string private _symbol;
   uint8 private _decimals;
-  uint256 private _totalSupply = 1000000 * 1e18;
+  uint256 private _totalSupply;
 
   mapping(address => uint256) private _balances;
   mapping(address => mapping(address => uint256)) private _allowances;
@@ -43,16 +45,24 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
     _;
   }
 
-  constructor(
+  function initialize(address _comp, address _questReward, address _dev, address _airdrop) public initializer {
+      __Ownable_init();
+      __SmartTokenCash_init_unchained(_comp, _questReward, _dev, _airdrop);
+  }
+
+  function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+  function __SmartTokenCash_init_unchained(
     address _smartComp,
     address _questReward,
     address _dev,
     address _airdrop
-  ) {
+  ) internal initializer {
 
     _name = "Smart Token Cash";
     _symbol = "SMTC";
     _decimals = 18;
+    _totalSupply = 1000000 * 1e18;
 
     comptroller = ISmartComp(_smartComp);
     address goldenTreePoolAddress = address(comptroller.getGoldenTreePool());
@@ -67,29 +77,21 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
         .createPair(address(this), address(busdContract));
 
     // quest reward mint.
-    uint256 questRewardDist = _totalSupply.div(1e5).mul(51576);
-    _balances[_questReward] = questRewardDist;
+    _balances[_questReward] = _totalSupply.div(1e5).mul(51576);
     // golden tree pool phase reward mint.
-    uint256 goldenTreeRewardDist = _totalSupply.div(1e5).mul(20132);
-    _balances[goldenTreePoolAddress] = goldenTreeRewardDist;
+    _balances[goldenTreePoolAddress] = _totalSupply.div(1e5).mul(20132);
     // developer reward mint.
-    uint256 devRewardDist = _totalSupply.div(10);
-    _balances[_dev] = devRewardDist;
+    _balances[_dev] = _totalSupply.div(10);
     // surprise reward mint.
-    uint256 surpRewardDist = _totalSupply.div(100).mul(9);
-    _balances[otherAchievementAddress] = surpRewardDist;
+    _balances[otherAchievementAddress] = _totalSupply.div(100).mul(9);
     // chest reward mint.
-    uint256 chestRewardDist = _totalSupply.div(1e5).mul(7692);
-    _balances[nobilityAchievementAddress] = chestRewardDist;
+    _balances[nobilityAchievementAddress] = _totalSupply.div(1e5).mul(7692);
     // private sale bonus mint.
-    uint256 privSaleDist = _totalSupply.div(100);
-    _balances[_operator] = privSaleDist;
+    _balances[_operator] = _totalSupply.div(100);
     // airdrop mint.
-    uint256 airdropDist = _totalSupply.div(1000).mul(5);
-    _balances[_airdrop] = airdropDist;
+    _balances[_airdrop] = _totalSupply.div(1000).mul(5);
     // initial SMTC-BUSD liquidity mint.
-    uint256 liquidityDist = _totalSupply.div(1000);
-    _balances[_operator] += liquidityDist;
+    _balances[_operator] += _totalSupply.div(1000);
   }
 
   function name() external override view returns (string memory) {
@@ -197,3 +199,4 @@ contract SmartTokenCash is Context, ISmartTokenCash, Ownable {
     emit Transfer(account, BURN_ADDRESS, amount);
   }
 }
+//////////////////////////////////////////////////////////

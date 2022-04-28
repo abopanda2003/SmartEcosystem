@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
-import '../interfaces/IUniswapPair.sol';
-import '../interfaces/IUniswapFactory.sol';
-import "./SafeMath.sol";
+// import '../interfaces/IUniswapPair.sol';
+// import '../interfaces/IUniswapFactory.sol';
+import './dexfactory.sol';
 
 library UniswapV2Library {
     using SafeMath for uint;
@@ -24,13 +24,14 @@ library UniswapV2Library {
                 keccak256(abi.encodePacked(token0, token1)),
                 //hex'00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5' // init code hash - mainnet
                 hex'ecba335299a6693cb2ebc4782e74669b84290b6378ea3a3873c7231a8d7d1074' // init code hash - testnet
+                // IPancakeSwapFactory(factory).init_code_pair_hash() // local test
             )))));
     }
 
     // fetches and sorts the reserves for a pair
     function getReserves(address factory, address tokenA, address tokenB) internal view returns (uint reserveA, uint reserveB) {
         (address token0,) = sortTokens(tokenA, tokenB);
-        (uint reserve0, uint reserve1,) = IUniswapV2Pair(pairFor(factory, tokenA, tokenB)).getReserves();
+        (uint reserve0, uint reserve1,) = IPancakeSwapPair(pairFor(factory, tokenA, tokenB)).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 

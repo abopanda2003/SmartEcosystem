@@ -163,16 +163,14 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Swap SMT token to BUSD
    * This function should be called from anyone
    */
-  function swapDistribute() external override onlySmartMember {
+  function swapDistribute(uint256 _amount) 
+      public onlySmartMember returns(uint256) {
+
     IERC20 busdToken = comptroller.getBUSD();
     IERC20 smtToken = comptroller.getSMT();
 
     uint256 smtBalance = smtToken.balanceOf(address(this));
-    require(smtBalance > 0, "GoldenTreePool#swapDistribute: insufficient SMT balance");
-
-    if(!swapEnabled || smtBalance <= limitPerSwap) {
-      return;
-    }
+    require(smtBalance >= _amount, "GoldenTreePool#swapDistribute: insufficient SMT balance");
 
     address[] memory busdpath = new address[](2);
     busdpath[0] = address(smtToken);
@@ -180,11 +178,11 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
 
     IUniswapV2Router02 _uniswapV2Router = comptroller.getUniswapV2Router();
 
-    smtToken.approve(address(_uniswapV2Router), smtBalance);
+    smtToken.approve(address(_uniswapV2Router), _amount);
 
     uint256 beforeBalance = busdToken.balanceOf(address(this));
     _uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        smtBalance,
+        _amount,
         0,
         busdpath,
         address(this),
@@ -193,6 +191,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     uint256 amount = busdToken.balanceOf(address(this)) - beforeBalance;
 
     emit RewardSwapped(smtBalance, amount);
+    return amount;
   }
 
   function distributePhaseReward(uint256 phase) internal {
@@ -209,12 +208,11 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
    * Swapped.
    */
   function notifyReward(uint256 amount, address account) 
-    external 
-    override 
-    onlyRewardsDistributor 
+    external override onlyRewardsDistributor 
   {
-
     if(amount == 0) return;
+
+    // uint256 busdAmount = swapDistribute(amount);
 
     IERC20 busdToken = comptroller.getBUSD();
     IERC20 smtToken = comptroller.getSMT();
@@ -235,7 +233,7 @@ contract GoldenTreePool is UUPSUpgradeable, OwnableUpgradeable, IGoldenTreePool 
     for(uint i = 0 ; i < growthShare.length; i++) {
       uint16 percent = growthShare[i];
       if(percent > 0 && ref != address(0x0)) {
-        uint256 shareAmount = busdAmount * percent / 10_000;      
+        uint256 shareAmount = busdAmount * percent / 10_000;
         if(i == 0) {
           increaseGrowth(ref, shareAmount);
           emit Growth(shareAmount, ref);

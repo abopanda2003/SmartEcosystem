@@ -14,6 +14,7 @@ interface ISmartFarm {
     struct UserInfo {
         uint256 tokenBalance;
         uint256 balance;
+        uint256 havested;
         uint256 rewards;
         uint256 rewardPerTokenPaid;     // User rewards per token paid for passive
         uint256 lastUpdated;

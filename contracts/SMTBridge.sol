@@ -16,15 +16,18 @@ import "./interfaces/ISmartComp.sol";
 import './libs/TransferHelper.sol';
 
 import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/utils/math/SafeMath.sol';
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "hardhat/console.sol";
 
-contract SMTBridge is Ownable {
+contract SMTBridge is UUPSUpgradeable, OwnableUpgradeable {
     using SafeMath for uint256;
 
     address public WBNB;
     address public pancakeFactory;
     
-    uint256 public aggregatorFee = 17; // Default to 0.0%
+    uint256 public aggregatorFee;
     uint256 public constant FEE_DENOMINATOR = 10_000;
 
     ISmartComp public comptroller;
@@ -34,15 +37,24 @@ contract SMTBridge is Ownable {
         _;
     }
 
-    constructor (
+    function initialize(ISmartComp _comptroller) public initializer {
+        __Ownable_init();
+        __SmartBridge_init_unchained(_comptroller);
+    }
+
+    function __SmartBridge_init_unchained (
         ISmartComp _comptroller
-    ) {
+    ) internal initializer {
         require(address(_comptroller) != address(0), "SMTBridge: ZERO_SMARTCOMP_ADDRESS");
         
         comptroller = _comptroller;
         WBNB = _comptroller.getUniswapV2Router().WETH();
         pancakeFactory = _comptroller.getUniswapV2Router().factory();
+
+        aggregatorFee = 17;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint amountIn,
@@ -63,6 +75,7 @@ contract SMTBridge is Ownable {
         uint amountOutMin,
         address[] calldata path
     ) internal virtual returns (uint) {
+
         _transferTokenToPair(
             path[0], msg.sender, UniswapV2Library.pairFor(pancakeFactory, path[0], path[1]), amountIn
         );
@@ -169,8 +182,7 @@ contract SMTBridge is Ownable {
         TransferHelper.safeTransferFrom(
             token, from, address(this), value
         );
-        uint amountIn = IERC20(token).balanceOf(address(this)).sub(balanceBefore);
-        
+        uint amountIn = IERC20(token).balanceOf(address(this)).sub(balanceBefore);        
         // Second Transfer token to pair from this
         TransferHelper.safeTransfer(token, pair, amountIn);
 

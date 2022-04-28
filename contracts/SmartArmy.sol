@@ -8,8 +8,6 @@
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-// import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -65,7 +63,6 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   }
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
 
   function __SmartArmy_init_unchained(address _comp)
     internal
@@ -166,7 +163,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
    * Update License type
    */
   function updateLicenseTypePrice(
-    uint256 _level, 
+    uint256 _level,
     uint256 _price
   ) public onlyOwner {
     require(_price > 0, "SmartArmy#updateLicenseType: Invalid Price");
@@ -238,7 +235,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     // Transfer SMT token for License type to this contract
     uint256 smtAmount = _type.price;
     uint amount = _tranferSmtToContract(sender, smtAmount);
-    uint256 liquidity = comptroller.getSmartFarm().stakeSMT(sender, amount);
+    uint256 liquidity = comptroller.getSmartFarm().stakeSMT(address(this), amount);
     require(liquidity > 0, "SmartArmy#activateLicense: failed to add liquidity");
 
     license.activeAt = block.timestamp;
@@ -251,8 +248,8 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
   }
 
   function upgradeLicense(uint256 _level) public {
-    UserLicense memory currentLicense = licenseOf(tx.origin);
-    UserPersonal memory currentPersonalInfo = userInfo[tx.origin];
+    UserLicense memory currentLicense = licenseOf(msg.sender);
+    UserPersonal memory currentPersonalInfo = userInfo[msg.sender];
 
     liquidateLicense();
     registerLicense(
@@ -274,8 +271,7 @@ contract SmartArmy is UUPSUpgradeable, OwnableUpgradeable, ISmartArmy {
     uint256 userLicenseId = userLicenses[sender];
     UserLicense storage license = licenses[userLicenseId];
     require(license.status == LicenseStatus.Active, "SmartArmy#liquidateLicense: no license yet");
-    // require(license.expireAt <= block.timestamp, "SmartArmy#liquidateLicense: still active");
-    uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(sender, license.lpLocked);
+    uint256 smtAmount = comptroller.getSmartFarm().withdrawSMT(address(this), license.lpLocked);
     require(smtAmount > 0, "SmartArmy#liquidateLicense: failed to refund SMT");
 
     _tranferSmtToUser(sender, smtAmount);

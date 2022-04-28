@@ -13,7 +13,7 @@ const uniswapPairABI = require("../artifacts/contracts/libs/dexfactory.sol/IPanc
 
 const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay * 1000));
 
-let owner, userWallet, anotherUser;
+let owner, userWallet, anotherUser, sponsor1, sponsor2;
 let smtContract, SmartLadderContract;
 
 function dim() {
@@ -83,7 +83,7 @@ const chainName = (chainId) => {
   }
 };
 
-const displayWalletBalances = async (tokenIns, bOwner, bAnother, bUser) => {
+const displayWalletBalances = async (tokenIns, bOwner, bAnother, bUser, bSponsor1, bSponsor2) => {
   if(bOwner){
     let balance = await tokenIns.balanceOf(owner.address);
     console.log("owner balance:",
@@ -93,13 +93,24 @@ const displayWalletBalances = async (tokenIns, bOwner, bAnother, bUser) => {
   if(bAnother){
     let balance = await tokenIns.balanceOf(anotherUser.address);
     console.log("another user balance:",
-                ethers.utils.formatEther(balance.toString()));
-  
+                ethers.utils.formatEther(balance.toString()));  
   }
 
   if(bUser){
     let balance = await tokenIns.balanceOf(userWallet.address);
     console.log("user balance:",
+                ethers.utils.formatEther(balance.toString()));  
+  }
+
+  if(bSponsor1){
+    let balance = await tokenIns.balanceOf(sponsor1.address);
+    console.log("sponsor1 balance:",
+                ethers.utils.formatEther(balance.toString()));  
+  }
+
+  if(bSponsor2){
+    let balance = await tokenIns.balanceOf(sponsor2.address);
+    console.log("sponsor2 balance:",
                 ethers.utils.formatEther(balance.toString()));  
   }
 };
@@ -190,7 +201,7 @@ const displayAllLicense = async(smartArmyContract) => {
   }
 }
 
-const buyLicense = async(smtTokenIns, smartArmyContract, wallet) => {
+const buyLicense = async(smtTokenIns, smartArmyContract, wallet, sponsor) => {
   cyan("============= Register Licenses =============");
   let userBalance = await smtTokenIns.balanceOf(wallet.address);
   userBalance = ethers.utils.formatEther(userBalance);
@@ -206,7 +217,7 @@ const buyLicense = async(smtTokenIns, smartArmyContract, wallet) => {
   let licId = await smartArmyContract.licenseIdOf(wallet.address);
   if(licId == 0) {
     let tx = await smartArmyContract.connect(wallet).registerLicense(
-      1, wallet.address, "Arsenii", "https://t.me.Ivan", "https://ipfs/2314341dwer242"
+      1, sponsor.address, "Arsenii", "https://t.me.Ivan", "https://ipfs/2314341dwer242"
     );
     await tx.wait();
     console.log("License register transaction:", tx.hash);  
@@ -242,6 +253,12 @@ const displayLicenseOf = async(smartArmyContract, userAddress) => {
   console.log("status: ", userLic.status);
 }
 
+const displayTitle = (strTitle) => {
+  cyan("*********************************");
+  cyan(`${strTitle}`);
+  cyan("*********************************");
+}
+
 async function main() {
 
     const { getNamedAccounts } = hre;
@@ -260,12 +277,13 @@ async function main() {
         NA_Busd,
         NA_SMT,
         NA_SMTC,
-        NA_SMTCC
+        NA_SMTCC,
+        NA_SMTCD
     } = await getNamedAccounts();
 
     console.log("router: ", NA_Router);
 
-    [owner, userWallet, anotherUser] = await getSigners();
+    [owner, userWallet, anotherUser, sponsor1, sponsor2] = await getSigners();
 
     const chainId = parseInt(await getChainId(), 10);
     const upgrades = hre.upgrades;
@@ -286,30 +304,31 @@ async function main() {
     console.log("another user:", anotherUser.address);
     console.log("chain id:", chainId);
 
-    const options = {    
+    const options = {
+      deployBUSD: true,
 
-      deploySmartComp: false,
+      deploySmartComp: true,
       upgradeSmartComp: false,
       
-      deployGoldenTreePool: false,
+      deployGoldenTreePool: true,
       upgradeGoldenTreePool: false,
 
-      deploySmartNobilityAch: false,
+      deploySmartNobilityAch: true,
       upgradeSmartNobilityAch: false,
 
-      deploySmartOtherAch: false,
+      deploySmartOtherAch: true,
       upgradeSmartOtherAch: false,
 
-      deploySmartArmy: false,
+      deploySmartArmy: true,
       upgradeSmartArmy: false,
 
-      deploySmartFarm: false,
+      deploySmartFarm: true,
       upgradeSmartFarm: false,
 
-      deploySmartLadder: false,
+      deploySmartLadder: true,
       upgradeSmartLadder: false,
 
-      deploySMTBridge: false,
+      deploySMTBridge: true,
 
       deploySMTCashToken: true,
 
@@ -323,19 +342,23 @@ async function main() {
 
       testArmyLicense: false,
       
+      testUpgradeLicense: false,
+      
       testSwap: false,
 
       testFarm: false
     }
 
     ///////////////////////// BUSD Token ///////////////////////////
-    cyan(`\nDeploying BUSD Contract...`);
-    let deployedBusd = await deploy('BEP20Token', {
-      from: owner.address,
-      skipIfAlreadyDeployed: false
-    });
-    displayResult('BUSD contract', deployedBusd);
-    let busdToken = await ethers.getContractAt("BEP20Token", deployedBusd.address);
+    let BUSDAddress = NA_Busd;
+    if(options.deployBUSD) {
+      const BusdToken = await ethers.getContractFactory("BEP20Token");
+      const busdContract = await BusdToken.deploy();
+      await busdContract.deployed();
+      BUSDAddress = busdContract.address;
+      displayResult("\nBUSD token deployed at", busdContract);
+    }
+    let busdToken = await ethers.getContractAt("BEP20Token", BUSDAddress);
 
     ///////////////////////// SmartComp ///////////////////////
     let smartCompAddress = NA_SmartComp;
@@ -346,7 +369,7 @@ async function main() {
         SmartComp,
         [
             NA_Router,
-            deployedBusd.address
+            busdToken.address
         ],
         { initializer: 'initialize', kind: 'uups' }
       );
@@ -355,52 +378,34 @@ async function main() {
       
       smartCompAddress = SmartCompProxy.address;
     }
-    if(options.upgradeSmartComp) {
-      green("Upgrading SmartComp contract");
-      const smartCompContract = await SmartComp.deploy();
-      smartCompContract.deployed();
-      displayResult('SmartComp Contract', smartCompContract);
-      smartCompAddress = smartCompContract.address;
-
-      await upgrades.upgradeProxy(smartCompAddress, SmartComp);      
-      green(`Upgraded SmartComp Contract`);
-    }
     if(!options.deploySmartComp && !options.upgradeSmartComp){
       green(`\nSmartComp Contract deployed at ${smartCompAddress}`);
     }
     const smartCompInstance = await ethers.getContractAt('SmartComp', smartCompAddress);
 
     ///////////////////////// SMTBridge ///////////////////////
-    let uniswapV2Factory = await smartCompInstance.getUniswapV2Factory();    
+    let uniswapV2Factory = await smartCompInstance.connect(owner).getUniswapV2Factory();    
     console.log("uniswapV2Factory:", uniswapV2Factory);
 
-    let uniswapV2Router = await smartCompInstance.getUniswapV2Router();
+    let uniswapV2Router = await smartCompInstance.connect(owner).getUniswapV2Router();
     console.log("uniswapV2Router:", uniswapV2Router);
 
     let smtBridgeAddress = NA_SmartBridge;
+    const SMTBridge = await ethers.getContractFactory('SMTBridge');
     if(options.deploySMTBridge) {
-      let tx = await smartCompInstance.setBUSD(deployedBusd.address);
-      await tx.wait();
-
-      let wbnb = await smartCompInstance.getWBNB();
-      let busd = await smartCompInstance.getBUSD();
-      console.log("wbnb:", wbnb);
-      console.log("busd:", busd);
-
-      let uniswapV2Factory = await smartCompInstance.getUniswapV2Factory();
-      console.log("uniswapV2Factory:", uniswapV2Factory);
-    
       cyan(`\nDeploying SMTBridge Contract...`);
-      let deployedSMTBridge = await deploy('SMTBridge', {
-        from: owner.address,
-        args: [
-          smartCompInstance.address
-        ],
-        skipIfAlreadyDeployed: false
-      });
-      displayResult('SMTBridge contract', deployedSMTBridge);
-      smtBridgeAddress = deployedSMTBridge.address;
-      tx = await smartCompInstance.setSmartBridge(smtBridgeAddress);
+      const SMTBridgeProxy = await upgrades.deployProxy(
+        SMTBridge,
+        [smartCompAddress],
+        {
+          initializer: 'initialize',
+          kind: 'uups'
+        }
+      );
+      await SMTBridgeProxy.deployed();
+      displayResult('SMTBridge contract', SMTBridgeProxy);
+      smtBridgeAddress = SMTBridgeProxy.address;
+      tx = await smartCompInstance.connect(owner).setSmartBridge(smtBridgeAddress);
       await tx.wait();
       console.log("set SmartBridge to SmartComp: ", tx.hash);
     } else {
@@ -426,14 +431,9 @@ async function main() {
 
         goldenTreePoolAddress = GoldenTreePoolProxy.address;
 
-        let tx = await smartCompInstance.setGoldenTreePool(goldenTreePoolAddress);
+        let tx = await smartCompInstance.connect(owner).setGoldenTreePool(goldenTreePoolAddress);
         await tx.wait();
         console.log("set GoldenTreePool to SmartComp: ", tx.hash);
-    }
-    if(options.upgradeGoldenTreePool) {
-        green(`\nUpgrading GoldenTreePool contract...`);
-        await upgrades.upgradeProxy(goldenTreePoolAddress, GoldenTreePool);
-        green(`GoldenTreePool Contract Upgraded`);
     }
     if(!options.deployGoldenTreePool && 
       !options.upgradeGoldenTreePool) {
@@ -458,7 +458,7 @@ async function main() {
         displayResult('SmartNobilityAchievement Proxy Address:', nobilityAchProxy);
         smartNobilityAchAddress = nobilityAchProxy.address;
 
-        tx = await smartCompInstance.setSmartNobilityAchievement(smartNobilityAchAddress);
+        tx = await smartCompInstance.connect(owner).setSmartNobilityAchievement(smartNobilityAchAddress);
         await tx.wait();
         console.log("set SmartNobilityAchievement to SmartComp: ", tx.hash);
     }
@@ -490,7 +490,7 @@ async function main() {
         displayResult('SmartOtherAchievement Proxy Address:', otherAchProxy);
         smartOtherAchAddress = otherAchProxy.address;
 
-        tx = await smartCompInstance.setSmartOtherAchievement(smartOtherAchAddress);
+        tx = await smartCompInstance.connect(owner).setSmartOtherAchievement(smartOtherAchAddress);
         await tx.wait();
         console.log("set SmartOtherAchievement to SmartComp: ", tx.hash);
     }
@@ -513,7 +513,7 @@ async function main() {
         smartArmyAddress = SmartArmyContract.address;
         displayResult('SmartArmy Contract Address:', SmartArmyContract);
 
-        let tx = await smartCompInstance.setSmartArmy(smartArmyAddress);
+        let tx = await smartCompInstance.connect(owner).setSmartArmy(smartArmyAddress);
         await tx.wait();
         console.log("set SmartArmy to SmartComp: ", tx.hash);
     }
@@ -540,17 +540,9 @@ async function main() {
         smartFarmAddress = SmartFarmContract.address;
         displayResult('SmartFarm Contract Address:', SmartFarmContract);
 
-        let tx = await smartCompInstance.setSmartFarm(smartFarmAddress);
+        let tx = await smartCompInstance.connect(owner).setSmartFarm(smartFarmAddress);
         await tx.wait();
         console.log("set SmartFarm to SmartComp: ", tx.hash);
-
-        // let smartFarmInstance = await ethers.getContractAt("SmartFarm", smartFarmAddress)
-        // tx = await smartFarmInstance.connect(owner).addDistributor(userWallet.address);
-        // await tx.wait();
-        // console.log("Added user to distributor's list");
-        // tx = await smartFarmInstance.connect(owner).addDistributor(anotherUser.address);
-        // await tx.wait();
-        // console.log("Added another user to distributor's list");  
     }
     if(options.upgradeSmartFarm) {
         green(`\nUpgrading SmartFarm contract...`);
@@ -567,15 +559,16 @@ async function main() {
     const SmartLadder = await ethers.getContractFactory('SmartLadder');
     if(options.deploySmartLadder) {
         cyan(`\nDeploying SmartLadder contract...`);
-        SmartLadderContract = await upgrades.deployProxy(SmartLadder, 
-            [smartCompAddress, owner.address],
-            {initializer: 'initialize',kind: 'uups'}
+        SmartLadderContract = await upgrades.deployProxy(
+          SmartLadder, 
+          [smartCompAddress, owner.address],
+          {initializer: 'initialize',kind: 'uups'}
         );    
         await SmartLadderContract.deployed()        
         smartLadderAddress = SmartLadderContract.address;
         displayResult('SmartLadder Contract Address:', SmartLadderContract);
 
-        let tx = await smartCompInstance.setSmartLadder(smartLadderAddress);
+        let tx = await smartCompInstance.connect(owner).setSmartLadder(smartLadderAddress);
         await tx.wait();
         console.log("set SmartLadder to SmartComp: ", tx.hash);
     }
@@ -594,44 +587,52 @@ async function main() {
     if(options.deploySMTCashToken) {
       cyan(`\nDeploying SMTC Contract...`);
       const SmartTokenCash = await ethers.getContractFactory('SmartTokenCash');
-      let smtcContract = await SmartTokenCash.deploy(
-        smartCompAddress,
-        owner.address,
-        owner.address,
-        owner.address
-      );
-      await smtcContract.deployed();
-      smtcAddress = smtcContract.address;
-      displayResult('SmartTokenCash contract', smtcContract);
+      const SmartTokenCashContract = await upgrades.deployProxy(
+        SmartTokenCash, 
+        [
+          smartCompAddress,
+          owner.address,
+          owner.address,
+          owner.address
+        ],
+        {initializer: 'initialize',kind: 'uups'}
+      );    
+      await SmartTokenCashContract.deployed();
+      smtcAddress = SmartTokenCashContract.address;
+      displayResult('SmartTokenCash contract', SmartTokenCashContract);
 
-      let tx = await smartCompInstance.setSMTC(smtcAddress);
+      let tx = await smartCompInstance.connect(owner).setSMTC(smtcAddress);
       await tx.wait();
       console.log("set SmartTokenCash to SmartComp: ", tx.hash);
     }
     let smtcContract = await ethers.getContractAt("SmartTokenCash", smtcAddress);
 
     if(options.resetSmartComp) {
-      let tx = await smartCompInstance.setSmartBridge(smtBridgeAddress);
+      let tx = await smartCompInstance.connect(owner).setSmartBridge(smtBridgeAddress);
       await tx.wait();
       console.log("set SmartBridge to SmartComp: ", tx.hash);
       
-      tx = await smartCompInstance.setGoldenTreePool(goldenTreePoolAddress);
+      tx = await smartCompInstance.connect(owner).setGoldenTreePool(goldenTreePoolAddress);
       await tx.wait();
       console.log("set GoldenTreePool to SmartComp: ", tx.hash);
 
-      tx = await smartCompInstance.setSmartAchievement(smartAchievementAddress);
+      tx = await smartCompInstance.connect(owner).setSmartNobilityAchievement(smartNobilityAchAddress);
       await tx.wait();
-      console.log("set SmartAchievement to SmartComp: ", tx.hash);
+      console.log("set SmartNobilityAchievement to SmartComp: ", tx.hash);
 
-      tx = await smartCompInstance.setSmartArmy(smartArmyAddress);
+      tx = await smartCompInstance.connect(owner).setSmartOtherAchievement(smartOtherAchAddress);
+      await tx.wait();
+      console.log("set SmartOtherAchievement to SmartComp: ", tx.hash);
+
+      tx = await smartCompInstance.connect(owner).setSmartArmy(smartArmyAddress);
       await tx.wait();
       console.log("set SmartArmy to SmartComp: ", tx.hash);
 
-      tx = await smartCompInstance.setSmartFarm(smartFarmAddress);
+      tx = await smartCompInstance.connect(owner).setSmartFarm(smartFarmAddress);
       await tx.wait();
       console.log("set SmartFarm to SmartComp: ", tx.hash);
 
-      tx = await smartCompInstance.setSmartLadder(smartLadderAddress);
+      tx = await smartCompInstance.connect(owner).setSmartLadder(smartLadderAddress);
       await tx.wait();
       console.log("set SmartLadder to SmartComp: ", tx.hash);
     }
@@ -639,50 +640,51 @@ async function main() {
     let smtTokenAddress = NA_SMT;
     if(options.deploySMTToken) {
         cyan(`\nDeploying SMT Token Contract...`);
-        const SmartToken = await ethers.getContractFactory('SMT');
-        let smtContract = await SmartToken.deploy(
-          smartCompAddress,
-          owner.address,
-          owner.address
-        );
-        await smtContract.deployed();
-        displayResult("\nSMT Token deployed at", smtContract);
+        const SmartToken = await ethers.getContractFactory('SmartToken');
+        const SmartTokenContract = await upgrades.deployProxy(
+          SmartToken, 
+          [
+            smartCompAddress,
+            owner.address,
+            owner.address
+          ],
+          {initializer: 'initialize',kind: 'uups'}
+        );  
+        await SmartTokenContract.deployed();
+        displayResult("\nSMT Token deployed at", SmartTokenContract);
     
-        await displayWalletBalances(smtContract, true, false, false);
+        await displayWalletBalances(SmartTokenContract, true, false, false, false, false);
 
-        smtTokenAddress = smtContract.address;    
+        smtTokenAddress = SmartTokenContract.address;    
 
-        tx = await smartCompInstance.setSMT(smtContract.address);
+        tx = await smartCompInstance.connect(owner).setSMT(SmartTokenContract.address);
         await tx.wait();
         console.log("set SMT token to SmartComp: ", tx.hash);
 
-        tx = await smtContract.setTaxLockStatus(
+        tx = await SmartTokenContract.setTaxLockStatus(
             false, false, false, false, false, false
         );
         await tx.wait();
         console.log("set tax lock status:", tx.hash);
 
+        tx = await smartLadderIns.initActivities();
+        await tx.wait();
+        console.log("initial activities: ", tx.hash);  
+
     } else {
       green(`\nSMT Token deployed at ${smtTokenAddress}`);
     }
 
-    let smtContract = await ethers.getContractAt("SMT", smtTokenAddress);
+    let smtContract = await ethers.getContractAt("SmartToken", smtTokenAddress);
 
-    let router = await smartCompInstance.getUniswapV2Router();
+    let router = await smartCompInstance.connect(owner).getUniswapV2Router();
     let routerInstance = new ethers.Contract(
         router, uniswapRouterABI, owner
     );
-    let isExcluded = await smtContract.isExcludedFromFee(NA_SMTCC);
-    if(!isExcluded){
-      let tx = await smtContract.connect(owner).excludeFromFee(NA_SMTCC, true);
-      await tx.wait();
-      console.log("SMTC Excluded Transaction: ", tx.hash);  
-    }else {
-      console.log("SMTC Already Excluded");  
-    }
 
     if(options.testSMTTokenTransfer) {
-        cyan("%%%%%%%%%%%%%%%% Transfer %%%%%%%%%%%%%%%%%");
+        displayTitle("Token Transfer");
+
         let tranferTx =  await smtContract.transfer(
           anotherUser.address,
           ethers.utils.parseUnits("200000", 18)
@@ -711,8 +713,7 @@ async function main() {
         await tranferTx.wait();
         console.log("BUSD : owner -> user transfer tx:", tranferTx.hash);      
         
-        await displayWalletBalances(smtContract, true, true, true);
-        await displayWalletBalances(busdToken, true, true, true);
+        await displayWalletBalances(smtContract, true, true, true, false, false);
     }
 
     let pairSmtcBnbAddr = await smtContract._uniswapV2ETHPair();
@@ -721,9 +722,9 @@ async function main() {
     console.log("SMT-BUSD LP token address: ", pairSmtcBusdAddr);
 
     if(options.testAddLiquidity) {
-        cyan("%%%%%%%%%%%%%%%% Liquidity %%%%%%%%%%%%%%%%%");
+        displayTitle("Add Liquidity");
 
-        let router = await smartCompInstance.getUniswapV2Router();
+        let router = await smartCompInstance.connect(owner).getUniswapV2Router();
         console.log("router: ", router);
 
         let pairSmtcBnbIns = new ethers.Contract(pairSmtcBnbAddr, uniswapPairABI, userWallet);
@@ -731,43 +732,95 @@ async function main() {
   
         // %%  when adding liquidity, owner have to be called for initial liquidity first.
         await addLiquidityToPools(
-          smtContract, busdToken, routerInstance, owner, 100000, 0.1, 10000, 10000
+          smtContract, busdToken, routerInstance, owner, 4000, 0.5, 100000, 100000
         );
 
-        await addLiquidityToPools(
-          smtContract, busdToken, routerInstance, anotherUser, 10000, 0.05, 10000, 10000
-        );
+        // await addLiquidityToPools(
+        //   smtContract, busdToken, routerInstance, anotherUser, 100, 0.1, 15000, 15000
+        // );
 
         await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtcBnbIns);
         await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtcBusdIns);  
     }
 
     if(options.testArmyLicense) {
+      displayTitle("Army License");
       let pairSmtcBusdAddr = await smtContract._uniswapV2BUSDPair();
       let pairSmtBusdIns = new ethers.Contract(pairSmtcBusdAddr, uniswapPairABI, owner);
       await displayLiquidityPoolBalance("SMT-BUSD POOL:", pairSmtBusdIns);
-      await displayWalletBalances(smtContract, false, false, true);
+      await displayWalletBalances(smtContract, false, false, true, false, false);
 
-      let smtAddr = await smartCompInstance.getSMT();
-      let farmAddr = await smartCompInstance.getSmartFarm();
+      let smtAddr = await smartCompInstance.connect(owner).getSMT();
+      let farmAddr = await smartCompInstance.connect(owner).getSmartFarm();
       console.log("smt address: ", smtAddr);
       console.log("farm address: ", farmAddr);
 
-      expect(await smartCompInstance.getSMT()).to.equal(smtContract.address);
-      expect(await smartCompInstance.getSmartFarm()).to.equal(smartFarmAddress);
+      expect(await smartCompInstance.connect(owner).getSMT()).to.equal(smtContract.address);
+      expect(await smartCompInstance.connect(owner).getSmartFarm()).to.equal(smartFarmAddress);
 
       await displayAllLicense(smartArmyIns);
-      await buyLicense(smtContract, smartArmyIns, userWallet);
+      await buyLicense(smtContract, smartArmyIns, userWallet, owner);
       await displayLicenseOf(smartArmyIns, userWallet.address);
-      await displayWalletBalances(smtContract, false, false, true);
+      await displayWalletBalances(smtContract, false, false, true, false, false);
+    }
+
+    if(options.testUpgradeLicense){
+      displayTitle("Upgrade License");
+
+      let tx =  await smtContract.transfer(
+        sponsor1.address, 
+        ethers.utils.parseUnits("10000", 18)
+      );
+      await tx.wait();
+      console.log("SMT : owner -> sponsor1 transfer tx:", tx.hash);
+
+      tx =  await smtContract.transfer(
+        sponsor2.address, 
+        ethers.utils.parseUnits("10000", 18)
+      );
+      await tx.wait();
+      console.log("SMT : owner -> sponsor2 transfer tx:", tx.hash);
+
+      await buyLicense(smtContract, smartArmyIns, anotherUser, userWallet);
+      await buyLicense(smtContract, smartArmyIns, sponsor1, anotherUser);
+      await buyLicense(smtContract, smartArmyIns, sponsor2, sponsor1);
+
+      await displayLicenseOf(smartArmyIns, userWallet.address);
+      await displayLicenseOf(smartArmyIns, anotherUser.address);
+      await displayLicenseOf(smartArmyIns, sponsor1.address);
+      await displayLicenseOf(smartArmyIns, sponsor2.address);
+
+      await displayWalletBalances(smtContract, true, true, true, true, true);
+
+      tx =  await smtContract.connect(userWallet).transfer(
+        anotherUser.address, 
+        ethers.utils.parseUnits("100", 18)
+      );
+      await tx.wait();
+      console.log("SMT : userWallet -> anotherUser transfer tx:", tx.hash);
+
+      tx =  await smtContract.connect(anotherUser).transfer(
+        sponsor1.address, 
+        ethers.utils.parseUnits("500", 18)
+      );
+      await tx.wait();
+      console.log("SMT : anotherUser -> sponsor1 transfer tx:", tx.hash);
+
+      tx =  await smtContract.connect(sponsor1).transfer(
+        sponsor2.address, 
+        ethers.utils.parseUnits("1000", 18)
+      );
+      await tx.wait();
+      console.log("SMT : sponsor1 -> sponsor2 transfer tx:", tx.hash);
+
     }
 
     if(options.testSwap) {
-      let isIntermediary = await smtContract.enabledIntermediary(userWallet.address);
+      let isIntermediary = await smtContract.enabledIntermediary(anotherUser.address);
       console.log("is allowed license: ", isIntermediary);
 
       let swapAmount = 100;
-      let tx = await smtContract.connect(userWallet).approve(
+      let tx = await smtContract.connect(anotherUser).approve(
         smartBridgeIns.address,
           ethers.utils.parseUnits(Number(swapAmount+1).toString(), 18)
       );
@@ -776,20 +829,20 @@ async function main() {
 
       let amountIn = ethers.utils.parseUnits(Number(swapAmount).toString(), 18);
       console.log("amountIn: ", amountIn);
-      tx = await smartBridgeIns.connect(userWallet).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+      tx = await smartBridgeIns.connect(anotherUser).swapExactTokensForTokensSupportingFeeOnTransferTokens(
         amountIn,
         0,
         [
           smtContract.address,
           busdToken.address
         ],
-        userWallet.address,
+        anotherUser.address,
         "99000000000000000000"
       );
       await tx.wait();
       console.log("Tx swapped for BUSD via SMT Bridge: ", tx.hash);
 
-      tx = await smtContract.connect(userWallet).approve(
+      tx = await smtContract.connect(anotherUser).approve(
         smartBridgeIns.address,
           ethers.utils.parseUnits(Number(swapAmount+1).toString(), 18)
       );
@@ -797,14 +850,14 @@ async function main() {
       console.log("approved tx: ", tx.hash);
 
       let wBNBAddress = await routerInstance.WETH();
-      tx = await smartBridgeIns.connect(userWallet).swapExactTokensForETHSupportingFeeOnTransferTokens(
+      tx = await smartBridgeIns.connect(anotherUser).swapExactTokensForETHSupportingFeeOnTransferTokens(
         amountIn,
         0,
         [
           smtContract.address,          
           wBNBAddress
         ],
-        userWallet.address,
+        anotherUser.address,
         "99000000000000000000"
       );
       await tx.wait();

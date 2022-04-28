@@ -7,7 +7,7 @@ const { deploy } = deployments;
 const uniswapRouterABI = require("../artifacts/contracts/libs/dexRouter.sol/IPancakeSwapRouter.json").abi;
 const uniswapPairABI = require("../artifacts/contracts/libs/dexfactory.sol/IPancakeSwapPair.json").abi;
 
-let owner, user, anotherUser, farmRewardWallet;
+let owner, user, anotherUser, farmRewardWallet, sponsor1, sponsor2;
 let exchangeFactory;
 let wEth;
 let exchangeRouter;
@@ -18,7 +18,8 @@ let smartFarmContract;
 let smartArmyContract;
 let smartLadderContract;
 let goldenTreeContract;
-let smartAchievementContract;
+let smartNobilityAchContract;
+let smartOtherAchContract;
 let routerInstance;
 let smartBridge;
 let initCodePairHash;
@@ -57,7 +58,12 @@ function displayResult(name, result) {
   }
 }
 
-const displayWalletBalances = async(tokenIns, bOwner, bAnother, bUser, bFarmingReward) => {
+const displayWalletBalances = async(tokenIns, bOwner, bAnother, bUser, bFarmingReward, bSponsor1, bSponsor2) => {
+
+  cyan("**************************************");
+  cyan("              Wallet Balances");
+  cyan("**************************************");
+
   let count = 0;
   if(bOwner){
     let balance = await tokenIns.balanceOf(owner.address);
@@ -83,6 +89,18 @@ const displayWalletBalances = async(tokenIns, bOwner, bAnother, bUser, bFarmingR
                 ethers.utils.formatEther(balance.toString()));
     count++;
   }
+  if(bSponsor1){
+    let balance = await tokenIns.balanceOf(sponsor1.address);
+    console.log("sponsor1 balance:",
+                ethers.utils.formatEther(balance.toString()));
+    count++;
+  }
+  if(bSponsor2){
+    let balance = await tokenIns.balanceOf(sponsor2.address);
+    console.log("sponsor2 balance:",
+                ethers.utils.formatEther(balance.toString()));
+    count++;
+  }
   if(count > 0)
     green("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
 };
@@ -99,8 +117,11 @@ const displayUserInfo = async(farmContract, wallet) => {
 const displayLiquidityPoolBalance = async(comment, poolInstance) => {
   let reservesPair = await poolInstance.getReserves();
   console.log(comment);
-  console.log("token0:", ethers.utils.formatEther(reservesPair.reserve0));
-  console.log("token1:", ethers.utils.formatEther(reservesPair.reserve1));
+  let smtAmount = ethers.utils.formatEther(reservesPair.reserve0);
+  let busdAmount = ethers.utils.formatEther(reservesPair.reserve1);
+  console.log("SMT:", smtAmount);
+  console.log("BUSD:", busdAmount);
+  console.log("SMT Price: $", busdAmount/smtAmount);
 }
 
 const addLiquidityToPools = async(
@@ -283,11 +304,51 @@ const displayLicenseOf = async(smartArmyContract, userAddress) => {
   console.log("status: ", userLic.status);
 }
 
+const buyLicense = async(smtTokenIns, smartArmyContract, wallet, sponsor) => {
+  cyan("============= Register Licenses =============");
+  let userBalance = await smtTokenIns.balanceOf(wallet.address);
+  userBalance = ethers.utils.formatEther(userBalance);
+
+  const license = await smartArmyContract.licenseTypeOf(1);
+  let price = ethers.utils.formatEther(license.price);
+  
+  if(userBalance < price) {        
+    console.log("charge SMT token to your wallet!!!!");
+    return;
+  }
+
+  let licId = await smartArmyContract.licenseIdOf(wallet.address);
+  if(licId == 0) {
+    let tx = await smartArmyContract.connect(wallet).registerLicense(
+      1, sponsor.address, "Arsenii", "https://t.me.Ivan", "https://ipfs/2314341dwer242"
+    );
+    await tx.wait();
+    console.log("License register transaction:", tx.hash);  
+  } else {
+    cyan(`Current user with license ${licId} was registered`);
+    displayLicenseOf(smartArmyContract, wallet.address);  
+  }
+
+  let balance = await smtTokenIns.balanceOf(wallet.address);
+  expect(parseInt(ethers.utils.formatEther(balance))).to.greaterThan(0);
+
+  let tx = await smtTokenIns.connect(wallet).approve(
+    smartArmyContract.address,
+    ethers.utils.parseUnits(Number(price).toString(), 18)
+  );
+  await tx.wait();
+  console.log("Activation approved transaction: ", tx.hash);
+
+  tx = await smartArmyContract.connect(wallet).activateLicense();
+  await tx.wait();
+  console.log("License Activate transaction: ", tx.hash);
+}
+
 describe("Smtc Ecosystem Contracts Audit", () => {
   const { getContractFactory, getSigners } = ethers;
 
   beforeEach(async () => {
-    [owner, user, anotherUser, farmRewardWallet] = await getSigners();
+    [owner, user, anotherUser, farmRewardWallet, sponsor1, sponsor2] = await getSigners();
   });
 
   describe("Dex Engine Deploy", () => {
@@ -296,6 +357,8 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       console.log("owner:", owner.address);
       console.log("user:", user.address);
       console.log("another user:", anotherUser.address);
+      console.log("sponsor1:", sponsor1.address);
+      console.log("sponsor2:", sponsor2.address);
 
       cyan(`\nDeploying Factory Contract...`);
 
@@ -330,14 +393,6 @@ describe("Smtc Ecosystem Contracts Audit", () => {
   });
 
   describe("Main Contract Deploy", () => {
-
-    it("SMTC Token Deploy...", async function () {
-      cyan(`\nDeploying SmartTokenCash Contract...`);
-      const SmartTokenCash = await ethers.getContractFactory("SmartTokenCash");
-      smtcContract = await SmartTokenCash.deploy();
-      await smtcContract.deployed();    
-      displayResult("\nSmartTokenCash deployed at", smtcContract);
-    });
 
     it("BUSD Token Deploy...", async function () {
       cyan(`\nDeploying BUSD Contract...`);
@@ -374,8 +429,10 @@ describe("Smtc Ecosystem Contracts Audit", () => {
     it("SMTBridge deploy", async function () {
       cyan(`\nDeploying SMTBridge Contract...`);
       const SmartBridge = await ethers.getContractFactory("SMTBridge");
-      smartBridge = await SmartBridge.deploy(
-        smartCompContract.address
+      smartBridge = await upgrades.deployProxy(
+        SmartBridge,
+        [smartCompContract.address],
+        { initializer: 'initialize', kind: 'uups' }
       );
       await smartBridge.deployed();
       displayResult('SMTBridge contract', smartBridge);
@@ -416,12 +473,6 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       );
       await smartFarmContract.deployed();
       displayResult('SmartFarm contract', smartFarmContract);
-
-      let tx = await smartFarmContract.connect(owner).addDistributor(user.address);
-      await tx.wait();
-      tx = await smartFarmContract.connect(owner).addDistributor(anotherUser.address);
-      await tx.wait();
-
     });
     
     it("GoldenTreePool Deploy...", async function() {
@@ -429,23 +480,33 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       const GoldenTreePool = await ethers.getContractFactory('GoldenTreePool');
       goldenTreeContract = await upgrades.deployProxy(
         GoldenTreePool, 
-        [smartCompContract.address, smtcContract.address],
+        [smartCompContract.address],
         { initializer: 'initialize', kind: 'uups' }
       );
       await goldenTreeContract.deployed();
       displayResult('GoldenTreePool contract', goldenTreeContract);
     });
 
-    it("SmartAchievement Deploy...", async function() {
-      cyan(`\nDeploying SmartAchievement Contract...`);
-      const SmartAchievement = await ethers.getContractFactory('SmartAchievement');
-      smartAchievementContract = await upgrades.deployProxy(
-        SmartAchievement, 
-        [smartCompContract.address, smtcContract.address],
+    it("SmartNobilityAchievement Deploy...", async function() {
+      cyan(`\nDeploying SmartNobilityAchievement Contract...`);
+      const SmartNobilityAchievement = await ethers.getContractFactory('SmartNobilityAchievement');
+      smartNobilityAchContract = await upgrades.deployProxy(
+        SmartNobilityAchievement, 
+        [smartCompContract.address],
         { initializer: 'initialize', kind: 'uups' }
       );
-      await smartAchievementContract.deployed();
-      displayResult('SmartAchievement contract', smartAchievementContract);
+      displayResult('SmartNobilityAchievement contract', smartNobilityAchContract);
+    });
+
+    it("SmartOtherAchievement Deploy...", async function() {
+      cyan(`\nDeploying SmartOtherAchievement Contract...`);
+      const SmartOtherAchievement = await ethers.getContractFactory('SmartOtherAchievement');
+      smartOtherAchContract = await upgrades.deployProxy(
+        SmartOtherAchievement, 
+        [smartCompContract.address],
+        { initializer: 'initialize', kind: 'uups' }
+      );
+      displayResult('SmartNobilityAchievement contract', smartOtherAchContract);
     });
 
     it("Setting main contracts addresses to smart comp", async() => {
@@ -465,9 +526,29 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       tx = await smtcCompIns.setGoldenTreePool(goldenTreeContract.address);
       await tx.wait();
       console.log("setted golden tree pool to smart comp: ", tx.hash);
-      tx = await smtcCompIns.setSmartAchievement(smartAchievementContract.address);
+      tx = await smtcCompIns.setSmartNobilityAchievement(smartNobilityAchContract.address);
       await tx.wait();
-      console.log("setted smart achievement to smart comp: ", tx.hash);
+      console.log("setted smart nobility achievement to smart comp: ", tx.hash);
+      tx = await smtcCompIns.setSmartOtherAchievement(smartOtherAchContract.address);
+      await tx.wait();
+      console.log("setted smart other achievement to smart comp: ", tx.hash);
+    });
+
+    it("SMTC Token Deploy...", async function () {
+      cyan(`\nDeploying SmartTokenCash Contract...`);
+      const SmartTokenCash = await ethers.getContractFactory("SmartTokenCash");
+      smtcContract = await upgrades.deployProxy(
+        SmartTokenCash, 
+        [
+          smartCompContract.address,
+          owner.address,
+          owner.address,
+          owner.address
+        ],
+        { initializer: 'initialize', kind: 'uups' }
+      );
+      await smtcContract.deployed();    
+      displayResult("\nSmartTokenCash deployed at", smtcContract);
     });
     
     it("SMT Token Deploy....", async() => {
@@ -476,21 +557,24 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       expect(await smartCompContract.getUniswapV2Router())
                         .to.equal(exchangeRouter.address);
 
-      smtContract = await deploy('SMT', {
-        from: owner.address,
-        args: [
+      const SmartToken = await ethers.getContractFactory("SmartToken");
+      smtContract = await upgrades.deployProxy(
+        SmartToken, 
+        [
           smartCompContract.address,
           owner.address,
           owner.address
-        ]
-      });
-      displayResult("\nSMT Token deployed at", smtContract);
+        ],
+        { initializer: 'initialize', kind: 'uups' }
+      );
+      await smtContract.deployed();    
+      displayResult("\nSmart Token deployed at", smtContract);
 
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
-      await displayWalletBalances(smtTokenIns, true, false, false, false);
+      let smtTokenIns = await ethers.getContractAt("SmartToken", smtContract.address);
+      await displayWalletBalances(smtTokenIns, true, false, false, false, false, false);
       let smtcCompIns = await ethers.getContractAt("SmartComp", smartCompContract.address);
 
-      tx = await smtcCompIns.setSMT(smtcContract.address);
+      tx = await smtcCompIns.setSMT(smtContract.address);
       await tx.wait();
       console.log("set SMT token to SmartComp: ", tx.hash);
 
@@ -508,6 +592,10 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       await tx.wait();
       console.log("set tax lock status to token: ", tx.hash);
 
+      tx = await smartLadderContract.initActivities();
+      await tx.wait();
+      console.log("initial activities: ", tx.hash);
+
       let bal = await smtTokenIns.balanceOf(owner.address);
       console.log("owner SMT balance:", ethers.utils.formatEther(bal.toString()));
       bal = await busdContract.balanceOf(owner.address);
@@ -515,31 +603,43 @@ describe("Smtc Ecosystem Contracts Audit", () => {
     });
 
     it("Token Transfer 00...", async() => {
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
-      await displayWalletBalances(smtTokenIns, false, false, false, true); 
-      await displayWalletBalances(busdContract, false, false, false, true); 
+      let smtTokenIns = await ethers.getContractAt("SmartToken", smtContract.address);
+      await displayWalletBalances(smtTokenIns, false, false, false, true, false, false); 
+      await displayWalletBalances(busdContract, false, false, false, true, false, false); 
 
       let tranferTx =  await smtTokenIns.transfer(
         anotherUser.address,
-        ethers.utils.parseUnits("30000", 18)
+        ethers.utils.parseUnits("300000", 18)
       );
       await tranferTx.wait();
 
       tranferTx =  await smtTokenIns.transfer(
         user.address,
-        ethers.utils.parseUnits("30000", 18)
+        ethers.utils.parseUnits("300000", 18)
+      );
+      await tranferTx.wait();
+
+      tranferTx =  await smtTokenIns.transfer(
+        sponsor1.address,
+        ethers.utils.parseUnits("300000", 18)
+      );
+      await tranferTx.wait();
+
+      tranferTx =  await smtTokenIns.transfer(
+        sponsor2.address,
+        ethers.utils.parseUnits("300000", 18)
       );
       await tranferTx.wait();
 
       tranferTx =  await busdContract.transfer(
         anotherUser.address,
-        ethers.utils.parseUnits("20000", 18)
+        ethers.utils.parseUnits("200000", 18)
       );
       await tranferTx.wait();
 
       tranferTx =  await busdContract.transfer(
         user.address,
-        ethers.utils.parseUnits("20000", 18)
+        ethers.utils.parseUnits("200000", 18)
       );
       await tranferTx.wait();
 
@@ -549,7 +649,7 @@ describe("Smtc Ecosystem Contracts Audit", () => {
 
     it("Add liquidity to liquidity pools...", async() => {
       let smtcCompIns = await ethers.getContractAt("SmartComp", smartCompContract.address);  
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
+      let smtTokenIns = await ethers.getContractAt("SmartToken", smtContract.address);
       routerInstance = new ethers.Contract(
         smtcCompIns.getUniswapV2Router(), uniswapRouterABI, owner
       );
@@ -561,7 +661,7 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       let pairSmtBusdIns = new ethers.Contract(pairSmtcBusdAddr, uniswapPairABI, owner);
 
       let tx = await smtTokenIns.setTaxLockStatus(
-        false, true, false, false, true, false
+        false, false, false, false, false, false
       );
       await tx.wait();
 
@@ -569,31 +669,30 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       await tx.wait();
 
       await addLiquidityToPools(
-        smtTokenIns, busdContract, routerInstance, owner, 10000, 10, 10000, 10000
+        smtTokenIns, busdContract, routerInstance, owner, 1000000, 100, 1000000, 1000000
       );
       await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
       await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
-      console.log("###### successful addition liquidity by owner");
 
-      await addLiquidityToPools(
-        smtTokenIns, busdContract, routerInstance, anotherUser, 1000, 10, 1000, 1000
-      );
-      await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
-      await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
-      console.log("###### successful addition liquidity by another user");
+      // await addLiquidityToPools(
+      //   smtTokenIns, busdContract, routerInstance, anotherUser, 1000, 10, 1000, 1000
+      // );
+      // await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
+      // await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
+      // console.log("###### successful addition liquidity by another user");
 
-      await addLiquidityToPools(
-        smtTokenIns, busdContract, routerInstance, user, 5000, 10, 5000, 5000
-      );
-      await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
-      await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
-      console.log("###### successful addition liquidity by user");      
+      // await addLiquidityToPools(
+      //   smtTokenIns, busdContract, routerInstance, user, 5000, 10, 5000, 5000
+      // );
+      // await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
+      // await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
+      // console.log("###### successful addition liquidity by user");      
 
     });
 
     it("Swap Exchange...", async() => {
       let smtcCompIns = await ethers.getContractAt("SmartComp", smartCompContract.address);  
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
+      let smtTokenIns = await ethers.getContractAt("SmartToken", smtContract.address);
       let pairSmtcBnbAddr = await smtTokenIns._uniswapV2ETHPair();
       let pairSmtcBusdAddr = await smtTokenIns._uniswapV2BUSDPair();
       let pairSmtBnbIns = new ethers.Contract(pairSmtcBnbAddr, uniswapPairABI, owner);
@@ -602,99 +701,176 @@ describe("Smtc Ecosystem Contracts Audit", () => {
       routerInstance = new ethers.Contract(
         smtcCompIns.getUniswapV2Router(), uniswapRouterABI, owner
       );
-      
+
+      await buyLicense(smtContract, smartArmyContract, user, owner);
+      await buyLicense(smtContract, smartArmyContract, anotherUser, user);
+      await buyLicense(smtContract, smartArmyContract, sponsor1, anotherUser);
+      await buyLicense(smtContract, smartArmyContract, sponsor2, sponsor1);
+
+      let tx = await smartArmyContract.connect(user).upgradeLicense(2);
+      await tx.wait();
+      console.log("user's license upgraded with level2: ", tx.hash);
+
+      tx = await smartArmyContract.connect(anotherUser).upgradeLicense(3);
+      await tx.wait();
+      console.log("anotherUser's license upgraded with level2: ", tx.hash);
+
+      tx = await smartArmyContract.connect(sponsor1).upgradeLicense(4);
+      await tx.wait();
+      console.log("sponsor1's license upgraded with level2: ", tx.hash);
+
+      tx = await smartArmyContract.connect(sponsor2).upgradeLicense(2);
+      await tx.wait();
+      console.log("sponsor2's license upgraded with level2: ", tx.hash);
+
       await swapSMTForBNB(pairSmtBnbIns, smtTokenIns, user, routerInstance, 500);
       await swapSMTForBUSD(pairSmtBusdIns, smtTokenIns, busdContract, anotherUser, routerInstance, 1000);
-
+      await addLiquidityToPools(
+        smtTokenIns, busdContract, routerInstance, owner, 100000, 1, 50000, 50000
+      );
+      await displayLiquidityPoolBalance("SMT-BUSD Pool Reserves: ", pairSmtBusdIns);
+      // await swapSMTForBUSD(pairSmtBusdIns, busdContract, smtTokenIns, user, routerInstance, 5000);
+      
     });
 
     it("Token Transfer 11...", async() => {
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
+      // await displayLiquidityPoolBalance("SMT-BNB Pool Reserves: ", pairSmtBnbIns);
+
+      let smtTokenIns = await ethers.getContractAt("SmartToken", smtContract.address);
+      await displayWalletBalances(smtTokenIns, true, true, true, true, true, true);
+
+      await displayLicenseOf(smartArmyContract, user.address);
+      await displayLicenseOf(smartArmyContract, anotherUser.address);
+      await displayLicenseOf(smartArmyContract, sponsor1.address);
+      await displayLicenseOf(smartArmyContract, sponsor2.address);
+      
       let tranferTx = await smtTokenIns.connect(anotherUser).transfer(
         user.address, 
         ethers.utils.parseUnits("1000", 18)
       );
       await tranferTx.wait();
       console.log("another user -> user transfer tx:", tranferTx.hash);
-      await displayWalletBalances(smtTokenIns, false, true, false, true);
 
-      tranferTx = await smtTokenIns.transfer(
-        user.address,
+      tranferTx = await smtTokenIns.connect(user).transfer(
+        sponsor1.address,
         ethers.utils.parseUnits("3000", 18)
       );
-      console.log("owner -> user: ", tranferTx.hash);
-    });
+      console.log("user -> sponsor1: ", tranferTx.hash);
 
-    it("SmartArmy ###  fetch all licenses", async() => {
-      cyan("============= Created Licenses =============");
-      let count = await smartArmyContract.countOfLicenses();
-      cyan(`total license count: ${count}`);
-      let defaultLics = await smartArmyContract.fetchAllLicenses();
-      for(let i=0; i<defaultLics.length; i++) {
-        console.log("************ index", i, " **************");
-        console.log("level:", defaultLics[i].level.toString());
-        console.log("name:", defaultLics[i].name.toString());
-        console.log("price:", ethers.utils.formatEther(defaultLics[i].price.toString()));
-        console.log("ladderLevel:", defaultLics[i].ladderLevel.toString());
-        console.log("duration:", defaultLics[i].duration.toString());
-      }
-    });
-
-    it("SmartArmy ### register and active license", async() => {
-      cyan("============= Register Licenses =============");
-      let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
-      let userBalance = await smtTokenIns.balanceOf(user.address);
-      userBalance = ethers.utils.formatEther(userBalance);
-      const license = await smartArmyContract.licenseTypeOf(1);
-      let price = ethers.utils.formatEther(license.price);
-      if(userBalance < price) {        
-        console.log("charge SMT token to your wallet!!!!");
-        return;
-      }
-
-      let tx = await smartArmyContract.connect(user).registerLicense(
-        1, anotherUser.address, "Arsenii", "https://t.me.Ivan", "https://ipfs/21232df233"
+      tranferTx = await smtTokenIns.connect(sponsor1).transfer(
+        sponsor2.address,
+        ethers.utils.parseUnits("10000", 18)
       );
-      await tx.wait();
-      console.log("register transaction:", tx.hash);
+      console.log("sponsor1 -> sponsor2: ", tranferTx.hash);
 
-      tx = await smtTokenIns.connect(user).approve(
-        smartArmyContract.address,
-        ethers.utils.parseUnits(Number(price).toString(), 18)
+      tranferTx = await smtTokenIns.connect(sponsor2).transfer(
+        user.address,
+        ethers.utils.parseUnits("5000", 18)
       );
-      await tx.wait();
-      console.log("approve tx: ", tx.hash);
-      
-      tx = await smartArmyContract.connect(user).activateLicense();
-      await tx.wait();
-      console.log("transaction: ", tx.hash);
-      
-      await displayWalletBalances(smtTokenIns, false, false, true, false);
-      let userLic = await smartArmyContract.licenseOf(user.address);
-      console.log("----------- user license ---------------");
-      console.log("owner: ", userLic.owner);
-      console.log("level: ", userLic.level.toString());
-      console.log("start at: ", userLic.startAt.toString());
-      console.log("active at: ", userLic.activeAt.toString());
-      console.log("expire at: ", userLic.expireAt.toString());
-      console.log("lp locked: ", ethers.utils.formatEther(userLic.lpLocked.toString()));
+      console.log("sponsor2 -> user: ", tranferTx.hash);
+
+      await displayWalletBalances(smtTokenIns, true, true, true, true, true, true);
+
+
+      // let swapAmount = 100;
+      // let tx = await smtTokenIns.connect(user).approve(
+      //   smartBridge.address,
+      //     ethers.utils.parseUnits(Number(swapAmount+1).toString(), 18)
+      // );
+      // await tx.wait();
+      // console.log("approved tx: ", tx.hash);
+
+      // let amountIn = ethers.utils.parseUnits(Number(swapAmount).toString(), 18);
+      // console.log("amountIn: ", amountIn);
+      // tx = await smartBridge.connect(user).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+      //   amountIn,
+      //   0,
+      //   [
+      //     smtTokenIns.address,
+      //     busdContract.address
+      //   ],
+      //   user.address,
+      //   "99000000000000000000"
+      // );
+      // await tx.wait();
+      // console.log("Tx swapped for BUSD via SMT Bridge: ", tx.hash);
+
     });
+
+    // it("SmartArmy ###  fetch all licenses", async() => {
+    //   cyan("============= Created Licenses =============");
+    //   let count = await smartArmyContract.countOfLicenses();
+    //   cyan(`total license count: ${count}`);
+    //   let defaultLics = await smartArmyContract.fetchAllLicenses();
+    //   for(let i=0; i<defaultLics.length; i++) {
+    //     console.log("************ index", i, " **************");
+    //     console.log("level:", defaultLics[i].level.toString());
+    //     console.log("name:", defaultLics[i].name.toString());
+    //     console.log("price:", ethers.utils.formatEther(defaultLics[i].price.toString()));
+    //     console.log("ladderLevel:", defaultLics[i].ladderLevel.toString());
+    //     console.log("duration:", defaultLics[i].duration.toString());
+    //   }
+    // });
+
+    // it("SmartArmy ### register and active license", async() => {
+    //   cyan("============= Register Licenses =============");
+    //   let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
+    //   let userBalance = await smtTokenIns.balanceOf(user.address);
+    //   userBalance = ethers.utils.formatEther(userBalance);
+    //   const license = await smartArmyContract.licenseTypeOf(1);
+    //   let price = ethers.utils.formatEther(license.price);
+    //   if(userBalance < price) {
+    //     console.log("charge SMT token to your wallet!!!!");
+    //     return;
+    //   }
+
+    //   let tx = await smartArmyContract.connect(user).registerLicense(
+    //     1, anotherUser.address, "Arsenii", "https://t.me.Ivan", "https://ipfs/21232df233"
+    //   );
+    //   await tx.wait();
+    //   console.log("register transaction:", tx.hash);
+
+    //   tx = await smtTokenIns.connect(user).approve(
+    //     smartArmyContract.address,
+    //     ethers.utils.parseUnits(Number(price).toString(), 18)
+    //   );
+    //   await tx.wait();
+    //   console.log("approve tx: ", tx.hash);
+      
+    //   tx = await smartArmyContract.connect(user).activateLicense();
+    //   await tx.wait();
+    //   console.log("transaction: ", tx.hash);
+      
+    //   await displayWalletBalances(smtTokenIns, false, false, true, false);
+    //   let userLic = await smartArmyContract.licenseOf(user.address);
+    //   console.log("----------- user license ---------------");
+    //   console.log("owner: ", userLic.owner);
+    //   console.log("level: ", userLic.level.toString());
+    //   console.log("start at: ", userLic.startAt.toString());
+    //   console.log("active at: ", userLic.activeAt.toString());
+    //   console.log("expire at: ", userLic.expireAt.toString());
+    //   console.log("lp locked: ", ethers.utils.formatEther(userLic.lpLocked.toString()));
+    // });
 
     // it("SmartArmy ### liquidate license", async() => {
     //   let userLic = await smartArmyContract.licenseOf(user.address);
     //   let curBlockNumber = await ethers.provider.getBlockNumber();
     //   const timestamp = (await ethers.provider.getBlock(curBlockNumber)).timestamp;
       
-    //   if(userLic.expireAt > timestamp) {
-    //     console.log("Current License still active!!!");
-    //     return;
-    //   }
-
     //   let smtTokenIns = await ethers.getContractAt("SMT", smtContract.address);
     //   displayWalletBalances(smtTokenIns,false,false,true,false);
 
-    //   let tx = await smartArmyContract.connect(user).liquidateLicense();
+    //   let tx = await smartArmyContract.connect(user).upgradeLicense(3);
     //   await tx.wait();
+
+    //   userLic = await smartArmyContract.licenseOf(user.address);
+    //   console.log("----------- user license ---------------");
+    //   console.log("owner: ", userLic.owner);
+    //   console.log("level: ", userLic.level.toString());
+    //   console.log("start at: ", userLic.startAt.toString());
+    //   console.log("active at: ", userLic.activeAt.toString());
+    //   console.log("expire at: ", userLic.expireAt.toString());
+    //   console.log("lp locked: ", ethers.utils.formatEther(userLic.lpLocked.toString()));
 
     //   displayWalletBalances(smtTokenIns,false,false,true,false);
     // });
@@ -846,8 +1022,7 @@ describe("Smtc Ecosystem Contracts Audit", () => {
     //   console.log("swapping tx: ", tx.hash);
     // });
 
-    it("SmartLadder### ", async() => {
-      
-    });
+    // it("SmartLadder### ", async() => {      
+    // });
   });
 });

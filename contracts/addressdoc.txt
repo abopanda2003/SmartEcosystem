@@ -1,0 +1,40 @@
+Network: Binance Smart Chain
+owner: 0x65D425A1d729e5254355Ab4B4B79abeEFfE60f34
+chain id: 56
+
+SmartComp Contract deployed at 0x02D7B5543c1b6DD5E5293a96CE1671f423E7720e
+uniswapV2Factory: 0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73
+uniswapV2Router: 0x10ED43C718714eb63d5aA57B78B54704E256024E
+wbnb: 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c
+busd: 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56
+uniswapV2Factory: 0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73
+
+Deploying SMTBridge Contract...
+Re-used existing SMTBridge contract at 0x3f92a973aE64970E2b5595f3C04dAC35578d9226
+set SmartBridge to SmartComp:  0x72e6654db7c42005b7cb87df18153fe75c1e5ba1c770fb8020a80faa67b34f43
+
+GoldenTreePool Contract deployed at 0xd982E5e7Cb846592493252BEF1aC955b23288065
+
+SmartNobilityAchievement Contract deployed at 0xb62a49222e0C5b2D009aB056a5C3AE4bCdf7489f
+
+SmartOtherAchievement Contract deployed at 0x7EE0Ac1271457d5EB18aA50dE7ba6Ecd7ca80F09
+
+SmartArmy Contract deployed at 0x40dEce3B1A3558126ea1B054134408ec568E4339
+
+SmartFarm Contract deployed at 0xb21Ed43B7c6382A5a5C671D18368C217dE187baF
+
+Deploying SmartLadder contract...
+Re-used existing SmartLadder Contract Address: at 0xD11279761cAe840102F520561E13f484f9336297
+set SmartLadder to SmartComp:  0xf12dface021cfaff1e8153dba7397c921bdb482cb91545f55dd07629241763f6
+
+Deploying SMTC Contract...
+Re-used existing SmartTokenCash contract at 0x0113F2734F0259EcD9B61176293cd7b8AC0476c2
+set SmartTokenCash to SmartComp:  0x0342a4f6c564fb680acdf51ad80d5c3d2e226ce5f7342d88004abbda0db34139
+
+Deploying SMT Token Contract...
+Re-used existing 
+SMT Token deployed at at 0x0024AEA93aC064a59C295f5dB5AA74920eD4f620
+set SMT token to SmartComp:  0x89649537d32727a9f18e5e0ad76a853ae3bcf82cd1fb12918c426da6eec5b287
+set tax lock status: 0x78267079f205715c5e05264573c54deecb745e80e9dc3f6aa9788bbabe5c7d58
+SMT-BNB LP token address:  0xacDd2c03d31186A77709bF5309759446eB4786AF
+SMT-BUSD LP token address:  0xcA435bcCBed49223F349C6eBBC56c9c3C646eA82

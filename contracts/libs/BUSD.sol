@@ -563,15 +563,9 @@ contract BEP20Token is Context, IBEP20, Ownable {
   }
 
   /**
-   * @dev Sets `amount` as the allowance of `spender` over the `owner`s tokens.
-   *
-   * This is internal function is equivalent to `approve`, and can be used to
-   * e.g. set automatic allowances for certain subsystems, etc.
+   * @dev Sets `amount` as the allowance of `spender` over the `owner`s.
    *
    * Emits an {Approval} event.
-   *
-   * Requirements:
-   *
    * - `owner` cannot be the zero address.
    * - `spender` cannot be the zero address.
    */

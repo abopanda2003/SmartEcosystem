@@ -3,6 +3,8 @@
 pragma solidity ^0.8.4;
 // pragma solidity ^0.5.16;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import "hardhat/console.sol";
 
 interface IPancakeSwapFactory {
@@ -23,21 +25,21 @@ interface IPancakeSwapFactory {
     function setFeeToSetter(address) external;
 }
 
-interface IERC20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
+// interface IERC20 {
+//     event Approval(address indexed owner, address indexed spender, uint value);
+//     event Transfer(address indexed from, address indexed to, uint value);
 
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function decimals() external view returns (uint8);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
+//     function name() external view returns (string memory);
+//     function symbol() external view returns (string memory);
+//     function decimals() external view returns (uint8);
+//     function totalSupply() external view returns (uint);
+//     function balanceOf(address owner) external view returns (uint);
+//     function allowance(address owner, address spender) external view returns (uint);
 
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-}
+//     function approve(address spender, uint value) external returns (bool);
+//     function transfer(address to, uint value) external returns (bool);
+//     function transferFrom(address from, address to, uint value) external returns (bool);
+// }
 
 interface IPancakeSwapERC20 {
     event Approval(address indexed owner, address indexed spender, uint value);
@@ -533,19 +535,19 @@ contract PancakeSwapFactory is IPancakeSwapFactory {
 
 // a library for performing overflow-safe math, courtesy of DappHub (https://github.com/dapphub/ds-math)
 
-library SafeMath {
-    function add(uint x, uint y) internal pure returns (uint z) {
-        require((z = x + y) >= x, 'ds-math-add-overflow');
-    }
+// library SafeMath {
+//     function add(uint x, uint y) internal pure returns (uint z) {
+//         require((z = x + y) >= x, 'ds-math-add-overflow');
+//     }
 
-    function sub(uint x, uint y) internal pure returns (uint z) {
-        require((z = x - y) <= x, 'ds-math-sub-underflow');
-    }
+//     function sub(uint x, uint y) internal pure returns (uint z) {
+//         require((z = x - y) <= x, 'ds-math-sub-underflow');
+//     }
 
-    function mul(uint x, uint y) internal pure returns (uint z) {
-        require(y == 0 || (z = x * y) / y == x, 'ds-math-mul-overflow');
-    }
-}
+//     function mul(uint x, uint y) internal pure returns (uint z) {
+//         require(y == 0 || (z = x * y) / y == x, 'ds-math-mul-overflow');
+//     }
+// }
 
 // a library for performing various math operations
 

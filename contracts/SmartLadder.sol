@@ -16,6 +16,7 @@ import './libs/TransferHelper.sol';
 
 import './interfaces/ISmartComp.sol';
 import './interfaces/ISmartLadder.sol';
+import 'hardhat/console.sol';
 
 
 contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
@@ -63,16 +64,14 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
         initializer
     {
         comptroller = ISmartComp(_comp);
-        adminWallet = _admin;
-      
-        _initActivities();
+        adminWallet = _admin;      
     }
     
   /**
    * Initialize Activities with default
    * 
    */
-  function _initActivities() internal {
+  function initActivities() external override onlyOwner {
     IERC20 smtToken = comptroller.getSMT();
 
     _updateActivity(1,    "buytax",      [5000, 500, 500, 750, 750, 1250, 1250], address(smtToken),  true,  true);
@@ -321,15 +320,8 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
   {
     Activity storage _activity = activities[id];
     address token = _activity.token;
-
-    uint256 amount = TransferHelper.isEther(token) 
-      ? address(this).balance
-      : IERC20(token).balanceOf(address(this));
-
-    if(amount == 0) {
-      return;
-    }
-
+    uint256 amount = IERC20(token).balanceOf(address(this));
+    if(amount == 0) return;
     if(!_activity.isValid || !_activity.enabled || sponsor[from] == address(0x0)) {
       // if activity is not valid or is stopped now, all token to admin wallet
       TransferHelper.safeTransferTokenOrETH(token, adminWallet, amount);
@@ -341,7 +333,7 @@ contract SmartLadder is UUPSUpgradeable, OwnableUpgradeable, ISmartLadder {
         uint16 percent = _activity.share[i];
         ref = sponsor[ref];
         uint256 ladderLevel = comptroller.getSmartArmy().licenseLevelOf(ref);
-        if(percent > 0 && ref != address(0x0) && i < ladderLevel) {
+        if(percent > 0 && ref != address(0x0) && ladderLevel > 0) {
           uint256 shareAmount = amount * percent / PERCENTS_DIVIDER;
           TransferHelper.safeTransferTokenOrETH(token, ref, shareAmount);
           paid += shareAmount;

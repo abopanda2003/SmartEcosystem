@@ -27,9 +27,10 @@ import 'hardhat/console.sol';
 contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOtherAchievement {
   ISmartComp public comptroller;
   address[] _farmers;
-  uint256[][9] supPool;
-  uint256[][9] supTotalSupply;
+  uint256[][] supPool;
+  uint256[][] supTotalSupply;
   uint256 private randNonce;
+  mapping(uint256 => uint256[]) _mapPoolIndex;
   mapping(address => UserInfo) _mapRewards;
 
   event RewardSwapped(uint256 reward);
@@ -45,13 +46,18 @@ contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOth
   {
     comptroller = ISmartComp(_comp);
 
-    uint256[9] memory smt = [uint256(1e22), 1e21, 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14]; // SMT
-    uint256[9] memory smtc = [uint256(1e21), 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14, 1e13];  // SMTC
-    supPool = [smt, smtc];
+    supPool = [
+      [uint256(1e22), 1e21, 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14], // SMT Mark
+      [uint256(1e21), 1e20, 1e19, 1e18, 1e17, 1e16, 1e15, 1e14, 1e13]  // SMTC Mark
+    ];
 
-    uint256[9] memory smtSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
-    uint256[9] memory smtcSupply = [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]; // Total Supply
-    supTotalSupply = [smtSupply, smtcSupply];
+    supTotalSupply = [
+      [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9], // SMT Total Supply
+      [uint256(10), 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9] // SMTC Total Supply
+    ];
+
+    _mapPoolIndex[0] = [uint256(0), 1, 2, 3, 4, 5, 6, 7, 8]; // SMT Pool Index
+    _mapPoolIndex[1] = [uint256(0), 1, 2, 3, 4, 5, 6, 7, 8]; // SMTC Pool Index
   }
 
   function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
@@ -123,12 +129,12 @@ contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOth
    */
   function distributeSellTax(uint256 _amount) 
               external override onlySmartMember {
-    
     ISmartArmy army = comptroller.getSmartArmy();
     address[] memory users = army.licensedUsers();
     uint256 totalPortions = 0;
-    for(uint256 i=0; i<users.length; i++) 
+    for(uint256 i=0; i<users.length; i++)
       totalPortions += army.licensePortionOf(users[i]);
+    if(totalPortions == 0) return;
     for(uint256 i=0; i<users.length; i++) {
       if(_mapRewards[users[i]].sellTaxRewards.length == 0)
         _mapRewards[users[i]].sellTaxRewards = new uint256[](2);
@@ -156,18 +162,6 @@ contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOth
     }
   }
 
-  function isPossibleSurprizeReward() public view returns(bool) {
-    uint256 i;
-    for(i=0; i<2; i++) {
-      uint256 j;
-      for(j=0; j<supTotalSupply[i].length; j++)
-        if(supTotalSupply[i][j] > 0) break;      
-      if(j < supTotalSupply[i].length) break;
-    }
-    if(i == 2) return false;
-    return true;
-  }
-
   function distributeSurprizeReward(
     address _account, 
     uint256 _claims
@@ -175,18 +169,22 @@ contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOth
 
     if(_mapRewards[_account].surprizeRewards.length <2)
         _mapRewards[_account].surprizeRewards = new uint256[](2);
-
+    uint256 seed = uint256(keccak256(abi.encode(block.number, msg.sender, block.timestamp)));
+    seed = seed / 1e18;
     for(uint256 i=0; i<_claims; i++) {
-      for(;isPossibleSurprizeReward();) {
-        uint256 seed = uint256(keccak256(abi.encode(block.number, msg.sender, block.timestamp)));
-        uint256 poolIndex = _getRandomNumebr(seed, supTotalSupply.length);
-        uint256 coinIndex = poolIndex % 2;
-        if(supTotalSupply[coinIndex][poolIndex] > 0) {
-          uint256 selectedReward = supPool[coinIndex][poolIndex];
-          _mapRewards[_account].surprizeRewards[coinIndex] += selectedReward;
-          supTotalSupply[coinIndex][poolIndex] -= 1;
-          break;
-        }
+      uint256 coinIndex = _getRandomNumebr(seed * i, 2);
+      uint256 leftIndex = _getRandomNumebr(seed * i, _mapPoolIndex[coinIndex].length);
+      if(_mapPoolIndex[coinIndex].length == 0) {
+        coinIndex = (coinIndex + 1) % 2;
+        if(_mapPoolIndex[coinIndex].length == 0) break;
+      }      
+      uint256 poolIndex = _mapPoolIndex[coinIndex][leftIndex];
+      if(supTotalSupply[coinIndex][poolIndex] > 0) {
+        uint256 selectedReward = supPool[coinIndex][poolIndex];
+        _mapRewards[_account].surprizeRewards[coinIndex] += selectedReward;
+        supTotalSupply[coinIndex][poolIndex] -= 1;
+        if(supTotalSupply[coinIndex][poolIndex] == 0) 
+            removeCoinPoolIndex(coinIndex, poolIndex);
       }
     }
   }
@@ -269,6 +267,15 @@ contract SmartOtherAchievement is UUPSUpgradeable, OwnableUpgradeable, ISmartOth
           i++;
       }
       _farmers.pop();
+  }
+
+  function removeCoinPoolIndex(uint256 cid, uint256 pid) internal {
+      require(_mapPoolIndex[cid].length > 0, "The array length is zero now.");
+      while (pid<_mapPoolIndex[cid].length-1) {
+          _mapPoolIndex[cid][pid] = _mapPoolIndex[cid][pid+1];
+          pid++;
+      }
+      _mapPoolIndex[cid].pop();
   }
 
   //to recieve ETH from uniswapV2Router when swaping

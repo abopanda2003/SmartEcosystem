@@ -67,7 +67,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
   function _authorizeUpgrade(address newImplementation) 
     internal override onlyOwner 
-  {    
+  {
   }
 
   function __SmartFarm_init_unchained(
@@ -154,7 +154,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function notifyRewardAmount(uint _reward)
     external override
     onlyRewardsDistributor
-    updatePassiveReward(address(0))
+    updatePassiveReward(address(0), true)
   {
     uint currentTime = block.timestamp;
 
@@ -175,9 +175,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     emit RewardAdded(_reward);
   }
 
-  /** @dev Updates the reward for a given address, before executing function */
-  modifier updatePassiveReward(address account) {
-    _;
+  function calcPassiveReward(address account) internal {
     // Setting of global vars
     uint256 newRewardPerToken = rewardPerToken();
     // If statement protects against loss in initialisation case
@@ -193,13 +191,25 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     }
   }
 
-  modifier updateFixedReward(address account) {
+  /** @dev Updates the reward for a given address, before executing function */
+  modifier updatePassiveReward(address account, bool beforeAndAfter) { // beforeAndAfter: 0: before,  1: after
+    if(!beforeAndAfter) calcPassiveReward(account);
+    _;
+    if(beforeAndAfter) calcPassiveReward(account);
+  }
+
+  function calcFixedReward(address account) internal {
+    if (account != address(0)) {
+        UserInfo storage uInfo = userInfo[account];
+        uInfo.rewards = earned(account);
+        uInfo.lastUpdated = block.timestamp;
+    }
+  }
+
+  modifier updateFixedReward(address account, bool beforeAndAfter) { // beforeAndAfter: 0: before,  1: after
+      if(!beforeAndAfter) calcFixedReward(account);
       _;
-      if (account != address(0)) {
-          UserInfo storage uInfo = userInfo[account];
-          uInfo.rewards = earned(account);
-          uInfo.lastUpdated = block.timestamp;
-      }
+      if(beforeAndAfter) calcFixedReward(account);
   }
 
   function reserveOf(address account) public view returns (uint256) {
@@ -212,6 +222,10 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
   function rewardsOf(address account) public view returns (uint256) {
     return userInfo[account].rewards;
+  }
+
+  function havestOf(address account) public view returns (uint256) {
+    return userInfo[account].havested;
   }
 
   function userInfoOf(address account) public view returns (UserInfo memory) {
@@ -287,10 +301,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function stakeSMT(
     address account,
     uint256 amount    
-  ) 
-    public override
-    updateFixedReward(msg.sender)
-    updatePassiveReward(msg.sender)
+  ) public override
+    updateFixedReward(tx.origin, true)
+    updatePassiveReward(tx.origin, true)
     returns(uint256)
   {
     ISmartArmy smartArmy = comptroller.getSmartArmy();
@@ -300,16 +313,16 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
     require(liquidity > 0, "SmartFarm#stakeSMT: failed to add liquidity");
 
     ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
-    if(stakedAmount > 100) ach.addFarmDistributor(account);
+    if(stakedAmount > 100) ach.addFarmDistributor(tx.origin);
 
-    UserInfo storage uInfo = userInfo[account];
+    UserInfo storage uInfo = userInfo[tx.origin];
     uInfo.balance = uInfo.balance + liquidity;
     uInfo.tokenBalance = uInfo.tokenBalance + stakedAmount;
 
     totalLpStaked = totalLpStaked + liquidity;
     totalStaked = totalStaked + stakedAmount;
 
-    emit Staked(account, amount, liquidity);
+    emit Staked(tx.origin, amount, liquidity);
 
     return liquidity;
   }
@@ -320,32 +333,30 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
   function withdrawSMT(
     address account,
     uint256 lpAmount
-  )
-    public 
-    override
-    updateFixedReward(account)
-    updatePassiveReward(account)
+  ) public override
+    updateFixedReward(tx.origin, false)
+    updatePassiveReward(tx.origin, false)
     returns(uint256)
   {
     require(lpAmount > 0, "SmartFarm#withdrawSMT: Cannot withdraw 0");
-    require(lpAmount <= balanceOf(account), "SmartFarm#withdrawSMT: Cannot withdraw more than balance");
+    require(lpAmount <= balanceOf(tx.origin), "SmartFarm#withdrawSMT: Cannot withdraw more than balance");
 
     ISmartArmy smartArmy = comptroller.getSmartArmy();
-    uint256 lpLocked = smartArmy.lockedLPOf(account);
+    uint256 lpLocked = smartArmy.lockedLPOf(tx.origin);
 
     require(_msgSender() == address(smartArmy) || _msgSender() == account, "SmartFarm#withdrawSMT: invalid account");
 
     if(_msgSender() == address(smartArmy)) {
       require(lpLocked == lpAmount, "SmartFarm#withdrawSMT: withdraw amount from SmartArmy is invalid");
     } else {
-      require(lpLocked + lpAmount <= balanceOf(account), "SmartFarm#withdrawSMT: withdraw amount is invalid");
+      require(lpLocked + lpAmount <= balanceOf(tx.origin), "SmartFarm#withdrawSMT: withdraw amount is invalid");
     }
 
     ISmartOtherAchievement ach = comptroller.getSmartOtherAchievement();
-    if(ach.isFarmer(account))
-      ach.removeFarmDistributor(account);
+    if(ach.isFarmer(tx.origin))
+      ach.removeFarmDistributor(tx.origin);
 
-    UserInfo storage uInfo = userInfo[account];
+    UserInfo storage uInfo = userInfo[tx.origin];
 
     uint256 smtAmount = _tranferSmtToUser(account, lpAmount);
     require(smtAmount > 0, "SmartFarm#withdrawSMT: failed to sent SMT to staker");
@@ -360,7 +371,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     totalLpStaked = totalLpStaked - lpAmount;
     
-    emit Withdrawn(account, smtAmount, lpAmount);
+    emit Withdrawn(tx.origin, smtAmount, lpAmount);
 
     return smtAmount;
   }
@@ -369,8 +380,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
    * ///@notice Redeem SMT rewards from staking
    */
   function claimReward(uint256 _amount) 
-    public 
-    override
+    public override
   {
       UserInfo storage uInfo = userInfo[_msgSender()];
       uint256 rewards = rewardsOf(_msgSender());
@@ -379,6 +389,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       TransferHelper.safeTransfer(address(comptroller.getSMT()), _msgSender(), _amount);
 
       uInfo.rewards = uInfo.rewards - _amount;
+      uInfo.havested = uInfo.havested + _amount;
       emit Claimed(_msgSender(), rewards);
   }
   
@@ -407,7 +418,7 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
 
     // distribute farming tax
     {
-      uint256 totalFarmingTax = _distributeFarmingTax(_from, amount);
+      uint256 totalFarmingTax = _distributeFarmingTax(tx.origin, amount);
       amount = amount - totalFarmingTax;
     }
 
@@ -473,11 +484,9 @@ contract SmartFarm is UUPSUpgradeable, OwnableUpgradeable, ISmartFarm {
       // transfer smt to passive pool and sync
       ISmartNobilityAchievement ach = comptroller.getSmartNobilityAchievement();
       TransferHelper.safeTransfer(address(smtToken), address(ach), farmingTaxPassiveAmount);
-      ach.swapDistribute(farmingTaxPassiveAmount);
       ach.distributePassiveShare(farmingTaxPassiveAmount);
       totalPaid = totalPaid + farmingTaxPassiveAmount;
     }
-
     return totalPaid;
   }
 

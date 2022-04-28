@@ -12,6 +12,7 @@ interface ISmartLadder {
         uint256     totalDistributed; // total distributed
     }
     
+    function initActivities() external;
     function registerSponsor(address _user, address _sponsor) external;
     function distributeTax(uint256 id, address account) external; 
     function distributeBuyTax(address account) external; 
